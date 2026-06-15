@@ -2,6 +2,9 @@
 .vs/
 .idea/
 *.DotSettings.user
+.vscode/
+*.code-workspace
+*.ignore
 
 # Compiled Object files
 *.slo
