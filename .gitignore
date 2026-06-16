@@ -1,5 +1,6 @@
 # IDE user specific files
 .vs/
+.vscode/
 .idea/
 *.DotSettings.user
 .vscode/
