@@ -55,7 +55,7 @@ UAbilitySystemComponent* UWeaponComponent::GetAbilitySystemComponent()
 
 void UWeaponComponent::GrantAssignedAbility()
 {
-    if (!GetOwner() || !GetOwner()->HasAuthority() || !AbilityClass)
+    if (!AbilityClass)
     {
         return;
     }
@@ -102,10 +102,6 @@ void UWeaponComponent::GiveAbility(TSubclassOf<UGameplayAbility> NewAbilityClass
 
 bool UWeaponComponent::ActivateAbility(bool bAllowRemoteActivation)
 {
-    {
-        return false;
-    }
-
     UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
     if (!ASC)
     {
