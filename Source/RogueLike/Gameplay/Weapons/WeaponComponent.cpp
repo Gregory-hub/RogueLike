@@ -6,10 +6,9 @@
 #include "AbilitySystemInterface.h"
 
 UWeaponComponent::UWeaponComponent()
+    : CurrentAbilityIndex(INDEX_NONE), CachedAbilitySystemComponent(nullptr)
 {
     PrimaryComponentTick.bCanEverTick = false;
-    AbilityHandle = FGameplayAbilitySpecHandle();
-    CachedAbilitySystemComponent = nullptr;
 }
 
 void UWeaponComponent::OnRegister()
@@ -22,12 +21,12 @@ void UWeaponComponent::BeginPlay()
 {
     Super::BeginPlay();
     ResolveAbilitySystemComponent();
-    GrantAssignedAbility();
 }
 
 void UWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-    ClearCurrentAbilityInternal();
+    ClearAllAbilities();
+    CachedAbilitySystemComponent = nullptr;
     Super::EndPlay(EndPlayReason);
 }
 
@@ -53,9 +52,9 @@ UAbilitySystemComponent* UWeaponComponent::GetAbilitySystemComponent()
     return CachedAbilitySystemComponent;
 }
 
-void UWeaponComponent::GrantAssignedAbility()
+void UWeaponComponent::AddAbility(TSubclassOf<UGameplayAbility> NewAbilityClass)
 {
-    if (!AbilityClass)
+    if (!NewAbilityClass)
     {
         return;
     }
@@ -66,68 +65,143 @@ void UWeaponComponent::GrantAssignedAbility()
         return;
     }
 
-    if (AbilityHandle.IsValid())
+    FGameplayAbilitySpec AbilitySpec(NewAbilityClass, 1, INDEX_NONE, this);
+    FGameplayAbilitySpecHandle Handle = ASC->GiveAbility(AbilitySpec);
+    if (Handle.IsValid())
     {
-        return;
-    }
+        Abilities.Add(Handle);
 
-    FGameplayAbilitySpec AbilitySpec(AbilityClass, 1, INDEX_NONE, this);
-    AbilityHandle = ASC->GiveAbility(AbilitySpec);
-}
-
-void UWeaponComponent::ClearCurrentAbilityInternal()
-{
-    if (AbilityHandle.IsValid())
-    {
-        if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
+        // If this is the first ability, select it as current
+        if (CurrentAbilityIndex == INDEX_NONE)
         {
-            ASC->ClearAbility(AbilityHandle);
+            CurrentAbilityIndex = 0;
         }
-
-        AbilityHandle = FGameplayAbilitySpecHandle();
     }
 }
 
-void UWeaponComponent::GiveAbility(TSubclassOf<UGameplayAbility> NewAbilityClass)
+bool UWeaponComponent::Attack(bool bAllowRemoteActivation)
 {
-    if (AbilityClass == NewAbilityClass)
+    if (!IsCurrentAbilityValid())
     {
-        return;
+        return false;
     }
 
-    ClearCurrentAbilityInternal();
-    AbilityClass = NewAbilityClass;
-    GrantAssignedAbility();
-}
-
-bool UWeaponComponent::ActivateAbility(bool bAllowRemoteActivation)
-{
     UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
     if (!ASC)
     {
         return false;
     }
 
-    if (AbilityHandle.IsValid())
+    const FGameplayAbilitySpecHandle& CurrentHandle = Abilities[CurrentAbilityIndex];
+    if (CurrentHandle.IsValid())
     {
-        return ASC->TryActivateAbility(AbilityHandle, bAllowRemoteActivation);
+        return ASC->TryActivateAbility(CurrentHandle, bAllowRemoteActivation);
     }
 
     return false;
 }
 
-void UWeaponComponent::RemoveAbility()
+bool UWeaponComponent::SelectAbilityByIndex(int32 Index)
 {
-    ClearCurrentAbilityInternal();
-    AbilityClass = nullptr;
+    if (!Abilities.IsValidIndex(Index))
+    {
+        return false;
+    }
+
+    CurrentAbilityIndex = Index;
+    return true;
 }
 
-bool UWeaponComponent::HasAbilityAssigned() const
+bool UWeaponComponent::SelectNextAbility()
 {
-    return AbilityClass != nullptr && AbilityHandle.IsValid();
+    if (Abilities.Num() == 0)
+    {
+        return false;
+    }
+
+    CurrentAbilityIndex = (CurrentAbilityIndex + 1) % Abilities.Num();
+    return true;
 }
 
-TSubclassOf<UGameplayAbility> UWeaponComponent::GetAbilityClass() const
+bool UWeaponComponent::SelectPreviousAbility()
 {
-    return AbilityClass;
+    if (Abilities.Num() == 0)
+    {
+        return false;
+    }
+
+    CurrentAbilityIndex--;
+    CurrentAbilityIndex = CurrentAbilityIndex < 0 ? Abilities.Num() - 1 : CurrentAbilityIndex;
+    return true;
+}
+
+bool UWeaponComponent::RemoveAbilityByIndex(int32 Index)
+{
+    if (!Abilities.IsValidIndex(Index))
+    {
+        return false;
+    }
+
+    UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+    if (ASC && Abilities[Index].IsValid())
+    {
+        ASC->ClearAbility(Abilities[Index]);
+    }
+
+    Abilities.RemoveAt(Index);
+
+    // Update current ability index
+    if (Abilities.Num() == 0)
+    {
+        CurrentAbilityIndex = INDEX_NONE;
+    }
+    else
+    {
+        if (CurrentAbilityIndex == Index)
+        {
+            // If current was removed, clamp to a valid index (prefer same numeric index if still valid)
+            CurrentAbilityIndex = Index < Abilities.Num() ? Index : Abilities.Num() - 1;
+        }
+        else if (Index < CurrentAbilityIndex)
+        {
+            // Shift current down if a prior element was removed
+            --CurrentAbilityIndex;
+        }
+    }
+
+    return true;
+}
+
+void UWeaponComponent::ClearAllAbilities()
+{
+    UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+
+    if (ASC)
+    {
+        for (const FGameplayAbilitySpecHandle& Handle : Abilities)
+        {
+            if (Handle.IsValid())
+            {
+                ASC->ClearAbility(Handle);
+            }
+        }
+    }
+
+    Abilities.Empty();
+    CurrentAbilityIndex = INDEX_NONE;
+}
+
+int32 UWeaponComponent::GetAbilityCount() const
+{
+    return Abilities.Num();
+}
+
+bool UWeaponComponent::IsCurrentAbilityValid() const
+{
+    return CurrentAbilityIndex >= 0 && Abilities.IsValidIndex(CurrentAbilityIndex) && Abilities[CurrentAbilityIndex].IsValid();
+}
+
+int32 UWeaponComponent::GetCurrentAbilityIndex() const
+{
+    return CurrentAbilityIndex;
 }
