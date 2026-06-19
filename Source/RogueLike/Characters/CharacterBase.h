@@ -10,7 +10,7 @@
 
 class UBasicAttributeSet;
 
-/** Base class for all characters in game */
+/** Shared character base for gameplay actors that need movement, abilities, and attributes. */
 UCLASS( Abstract )
 class ROGUELIKE_API ACharacterBase : public ACharacter, public IAbilitySystemInterface
 {

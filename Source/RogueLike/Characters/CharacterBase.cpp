@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "RogueLike/Characters/CharacterBase.h"
-#include "RogueLike/GAS/Attributes/BasicAttributeSet.h"
+#include "RogueLike/Gameplay/GAS/Attributes/BasicAttributeSet.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "AbilitySystemComponent.h"
 #include "Components/BillboardComponent.h"
