@@ -70,10 +70,10 @@ protected:
 private:
     void ResolveAbilitySystemComponent();
 
-    UPROPERTY()
+    UPROPERTY(Transient)
     TArray<FGameplayAbilitySpecHandle> Abilities;
 
-    UPROPERTY()
+    UPROPERTY(Transient)
     int32 CurrentAbilityIndex;
 
     UPROPERTY()
