@@ -11,7 +11,7 @@
 class UAbilitySystemComponent;
 class UGameplayAbility;
 
-/** Runtime weapon component intended for hands or other attachment points, allowing one active ability per weapon. */
+/** Runtime weapon component intended for hands or other attachment points, managing multiple abilities with one active ability per weapon. */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class ROGUELIKE_API UWeaponComponent : public UActorComponent
 {
@@ -20,20 +20,45 @@ class ROGUELIKE_API UWeaponComponent : public UActorComponent
 public:
     UWeaponComponent();
 
+    /** Add a new ability to the weapon. */
     UFUNCTION(BlueprintCallable, Category="Weapon")
-    void GiveAbility(TSubclassOf<UGameplayAbility> NewAbilityClass);
+    void AddAbility(TSubclassOf<UGameplayAbility> NewAbilityClass);
 
+    /** Attack using the currently selected ability. */
     UFUNCTION(BlueprintCallable, Category="Weapon")
-    bool ActivateAbility(bool bAllowRemoteActivation = true);
+    bool Attack(bool bAllowRemoteActivation = true);
 
+    /** Select the ability at the given index as the current ability. */
     UFUNCTION(BlueprintCallable, Category="Weapon")
-    void RemoveAbility();
+    bool SelectAbilityByIndex(int32 Index);
 
+    /** Select the next ability in the list, cycling back to the beginning if at the end. */
+    UFUNCTION(BlueprintCallable, Category="Weapon")
+    bool SelectNextAbility();
+
+    /** Select the previous ability in the list, cycling back to the end if at the beginning. */
+    UFUNCTION(BlueprintCallable, Category="Weapon")
+    bool SelectPreviousAbility();
+
+    /** Remove the ability at the given index. */
+    UFUNCTION(BlueprintCallable, Category="Weapon")
+    bool RemoveAbilityByIndex(int32 Index);
+
+    /** Remove all abilities from this weapon. */
+    UFUNCTION(BlueprintCallable, Category="Weapon")
+    void ClearAllAbilities();
+
+    /** Get the number of abilities stored in this weapon. */
     UFUNCTION(BlueprintPure, Category="Weapon")
-    bool HasAbilityAssigned() const;
+    int32 GetAbilityCount() const;
 
+    /** Check if the current ability is valid and can be used. */
     UFUNCTION(BlueprintPure, Category="Weapon")
-    TSubclassOf<UGameplayAbility> GetAbilityClass() const;
+    bool IsCurrentAbilityValid() const;
+
+    /** Get the index of the currently selected ability. */
+    UFUNCTION(BlueprintPure, Category="Weapon")
+    int32 GetCurrentAbilityIndex() const;
 
 protected:
     virtual void OnRegister() override;
@@ -42,16 +67,14 @@ protected:
 
     UAbilitySystemComponent* GetAbilitySystemComponent();
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ability Socket")
-    TSubclassOf<UGameplayAbility> AbilityClass;
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Ability Socket")
-    FGameplayAbilitySpecHandle AbilityHandle;
-
 private:
     void ResolveAbilitySystemComponent();
-    void GrantAssignedAbility();
-    void ClearCurrentAbilityInternal();
+
+    UPROPERTY(Transient)
+    TArray<FGameplayAbilitySpecHandle> Abilities;
+
+    UPROPERTY(Transient)
+    int32 CurrentAbilityIndex;
 
     UPROPERTY()
     UAbilitySystemComponent* CachedAbilitySystemComponent;
