@@ -7,7 +7,7 @@
 #include "AttributeSet.h"
 #include "BasicAttributeSet.generated.h"
 
-/** Attributes common for all entities */
+/** Core actor attributes used by the game's ability and health systems. */
 UCLASS()
 class ROGUELIKE_API UBasicAttributeSet : public UAttributeSet
 {

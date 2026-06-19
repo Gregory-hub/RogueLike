@@ -11,8 +11,7 @@ struct FInputActionValue;
 class UInputMappingContext;
 class UInputAction;
 
-/** Base class for player input handling
- * Make BP child and add input acton events */
+/** Central player controller designed for blueprint-driven input mapping and enhanced input setup. */
 UCLASS( Abstract )
 class ROGUELIKE_API AMainPlayerController : public APlayerController
 {
