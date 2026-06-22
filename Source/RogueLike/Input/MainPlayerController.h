@@ -15,11 +15,11 @@ class UInputAction;
 UCLASS( Abstract )
 class ROGUELIKE_API AMainPlayerController : public APlayerController
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 protected:
-	virtual void BeginPlay() override;
+    virtual void BeginPlay() override;
 
-	UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "MainPlayerController" )
-	TObjectPtr<UInputMappingContext> InputMappingContext_;
+    UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "MainPlayerController" )
+    TObjectPtr<UInputMappingContext> InputMappingContext_;
 };
