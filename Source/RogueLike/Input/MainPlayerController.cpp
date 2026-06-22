@@ -7,19 +7,19 @@
 
 void AMainPlayerController::BeginPlay()
 {
-	Super::BeginPlay();
+    Super::BeginPlay();
 
-	// mouse settings
-	bShowMouseCursor = true;
-	FInputModeGameAndUI inputMode;
-	inputMode.SetLockMouseToViewportBehavior( EMouseLockMode::DoNotLock );
-	inputMode.SetHideCursorDuringCapture( false );
-	SetInputMode( inputMode );
+    // mouse settings
+    bShowMouseCursor = true;
+    FInputModeGameAndUI inputMode;
+    inputMode.SetLockMouseToViewportBehavior( EMouseLockMode::DoNotLock );
+    inputMode.SetHideCursorDuringCapture( false );
+    SetInputMode( inputMode );
 
-	// input
-	if ( UEnhancedInputLocalPlayerSubsystem* subsystem =
-		ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>( GetLocalPlayer() ) )
-	{
-		subsystem->AddMappingContext( InputMappingContext_, 0 );
-	}
+    // input
+    if ( UEnhancedInputLocalPlayerSubsystem* subsystem =
+             ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>( GetLocalPlayer() ) )
+    {
+        subsystem->AddMappingContext( InputMappingContext_, 0 );
+    }
 }
