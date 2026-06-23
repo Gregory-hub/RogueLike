@@ -204,6 +204,11 @@ bool UWeaponComponent::IsCurrentAbilityValid() const
     return CurrentAbilityIndex >= 0 && Abilities.IsValidIndex( CurrentAbilityIndex ) && Abilities[CurrentAbilityIndex].IsValid();
 }
 
+TSubclassOf<UGameplayAbility> UWeaponComponent::GetCurrentAbility() const
+{
+    return GetAbilityByIndex( CurrentAbilityIndex );
+}
+
 int32 UWeaponComponent::GetCurrentAbilityIndex() const
 {
     return CurrentAbilityIndex;

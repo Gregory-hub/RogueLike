@@ -56,6 +56,9 @@ public:
     UFUNCTION( BlueprintPure, Category = "Weapon" )
     bool IsCurrentAbilityValid() const;
 
+    UFUNCTION( BlueprintPure, Category = "Weapon" )
+    TSubclassOf<UGameplayAbility> GetCurrentAbility() const;
+
     /** Get the index of the currently selected ability. */
     UFUNCTION( BlueprintPure, Category = "Weapon" )
     int32 GetCurrentAbilityIndex() const;
