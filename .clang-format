@@ -28,6 +28,10 @@ SortIncludes: CaseSensitive
 IncludeBlocks: Regroup
 
 IncludeCategories:
+  # Generated header always last
+  - Regex: '.*\.generated\.h"'
+    Priority: 999
+
   # Engine / UE includes
   - Regex: '^"(Engine|Core|CoreMinimal|UObject|Components|GameFramework|Input|Net|Slate|Editor|Animation|Physics|AI|Niagara|Gameplay).*"'
     Priority: 1
@@ -35,7 +39,3 @@ IncludeCategories:
   # Project includes
   - Regex: '^".*"'
     Priority: 2
-
-  # Generated header always last
-  - Regex: '.*\.generated\.h"'
-    Priority: 999
