@@ -34,11 +34,11 @@ public:
 
     /** Select the next ability in the list, cycling back to the beginning if at the end. */
     UFUNCTION( BlueprintCallable, Category = "Weapon" )
-    bool SelectNextAbility();
+    TSubclassOf<UGameplayAbility> SelectNextAbility();
 
     /** Select the previous ability in the list, cycling back to the end if at the beginning. */
     UFUNCTION( BlueprintCallable, Category = "Weapon" )
-    bool SelectPreviousAbility();
+    TSubclassOf<UGameplayAbility> SelectPreviousAbility();
 
     /** Remove the ability at the given index. */
     UFUNCTION( BlueprintCallable, Category = "Weapon" )
@@ -60,12 +60,15 @@ public:
     UFUNCTION( BlueprintPure, Category = "Weapon" )
     int32 GetCurrentAbilityIndex() const;
 
+    UFUNCTION( BlueprintPure, Category = "Weapon" )
+    TSubclassOf<UGameplayAbility> GetAbilityByIndex( int32 Index ) const;
+
 protected:
     virtual void OnRegister() override;
     virtual void BeginPlay() override;
     virtual void EndPlay( const EEndPlayReason::Type EndPlayReason ) override;
 
-    UAbilitySystemComponent* GetAbilitySystemComponent();
+    UAbilitySystemComponent* GetAbilitySystemComponent() const;
 
 private:
     void ResolveAbilitySystemComponent();

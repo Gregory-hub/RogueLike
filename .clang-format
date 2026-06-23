@@ -1,13 +1,34 @@
 BasedOnStyle: LLVM
+
 IndentWidth: 4
 TabWidth: 4
 UseTab: Never
+
 BreakBeforeBraces: Allman
 AccessModifierOffset: -4
 AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: false
+
 SpaceBeforeParens: ControlStatements
 SpacesInParentheses: true
+
 PointerAlignment: Left
 DerivePointerAlignment: false
+
 ColumnLimit: 0
-AllowShortIfStatementsOnASingleLine: false
+
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+
+IncludeCategories:
+# Engine / UE includes
+- Regex: '^"(Engine|Core|CoreMinimal|UObject|Components|GameFramework|Input|Net|Slate|Editor|Animation|Physics|AI|Niagara|Gameplay).*"'
+  Priority: 1
+
+# Everything else in quotes (project headers)
+- Regex: '^".*"'
+  Priority: 2
+
+# Generated header always last
+- Regex: '.*\.generated\.h"'
+  Priority: 999

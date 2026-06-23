@@ -1,9 +1,11 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "RogueLike/Gameplay/Weapons/WeaponComponent.h"
+
 #include "Abilities/GameplayAbility.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
+#include "WeaponComponent.h"
 
 UWeaponComponent::UWeaponComponent()
     : CurrentAbilityIndex( INDEX_NONE ), CachedAbilitySystemComponent( nullptr )
@@ -46,9 +48,8 @@ void UWeaponComponent::ResolveAbilitySystemComponent()
     }
 }
 
-UAbilitySystemComponent* UWeaponComponent::GetAbilitySystemComponent()
+UAbilitySystemComponent* UWeaponComponent::GetAbilitySystemComponent() const
 {
-    ResolveAbilitySystemComponent();
     return CachedAbilitySystemComponent;
 }
 
@@ -112,27 +113,29 @@ bool UWeaponComponent::SelectAbilityByIndex( int32 Index )
     return true;
 }
 
-bool UWeaponComponent::SelectNextAbility()
+TSubclassOf<UGameplayAbility> UWeaponComponent::SelectNextAbility()
 {
     if ( Abilities.Num() == 0 )
     {
-        return false;
+        return nullptr;
     }
 
     CurrentAbilityIndex = ( CurrentAbilityIndex + 1 ) % Abilities.Num();
-    return true;
+
+    return GetAbilityByIndex( CurrentAbilityIndex );
 }
 
-bool UWeaponComponent::SelectPreviousAbility()
+TSubclassOf<UGameplayAbility> UWeaponComponent::SelectPreviousAbility()
 {
     if ( Abilities.Num() == 0 )
     {
-        return false;
+        return nullptr;
     }
 
     CurrentAbilityIndex--;
     CurrentAbilityIndex = CurrentAbilityIndex < 0 ? Abilities.Num() - 1 : CurrentAbilityIndex;
-    return true;
+
+    return GetAbilityByIndex( CurrentAbilityIndex );
 }
 
 bool UWeaponComponent::RemoveAbilityByIndex( int32 Index )
@@ -204,4 +207,30 @@ bool UWeaponComponent::IsCurrentAbilityValid() const
 int32 UWeaponComponent::GetCurrentAbilityIndex() const
 {
     return CurrentAbilityIndex;
+}
+
+TSubclassOf<UGameplayAbility> UWeaponComponent::GetAbilityByIndex( int32 Index ) const
+{
+    if ( !Abilities.IsValidIndex( Index ) )
+    {
+        return nullptr;
+    }
+
+    UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+    if ( !ASC )
+    {
+        return nullptr;
+    }
+
+    const FGameplayAbilitySpecHandle& Handle = Abilities[Index];
+    if ( Handle.IsValid() )
+    {
+        const FGameplayAbilitySpec* Spec = ASC->FindAbilitySpecFromHandle( Handle );
+        if ( Spec )
+        {
+            return Spec->Ability->GetClass();
+        }
+    }
+
+    return nullptr;
 }
