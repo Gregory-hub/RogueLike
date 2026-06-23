@@ -17,18 +17,25 @@ DerivePointerAlignment: false
 
 ColumnLimit: 0
 
+# Unreal reflection macros
+StatementMacros:
+  - UCLASS
+  - USTRUCT
+  - UENUM
+  - UINTERFACE
+
 SortIncludes: CaseSensitive
 IncludeBlocks: Regroup
 
 IncludeCategories:
-# Engine / UE includes
-- Regex: '^"(Engine|Core|CoreMinimal|UObject|Components|GameFramework|Input|Net|Slate|Editor|Animation|Physics|AI|Niagara|Gameplay).*"'
-  Priority: 1
+  # Engine / UE includes
+  - Regex: '^"(Engine|Core|CoreMinimal|UObject|Components|GameFramework|Input|Net|Slate|Editor|Animation|Physics|AI|Niagara|Gameplay).*"'
+    Priority: 1
 
-# Everything else in quotes (project headers)
-- Regex: '^".*"'
-  Priority: 2
+  # Project includes
+  - Regex: '^".*"'
+    Priority: 2
 
-# Generated header always last
-- Regex: '.*\.generated\.h"'
-  Priority: 999
+  # Generated header always last
+  - Regex: '.*\.generated\.h"'
+    Priority: 999
