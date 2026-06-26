@@ -239,3 +239,21 @@ TSubclassOf<UGameplayAbility> UWeaponComponent::GetAbilityByIndex( int32 Index )
 
     return nullptr;
 }
+
+TArray<TSubclassOf<UGameplayAbility>> UWeaponComponent::GetAbilityClasses() const
+{
+    TArray<TSubclassOf<UGameplayAbility>> AbilityClasses;
+    AbilityClasses.Reserve( Abilities.Num() );
+
+    for (int32 Index = 0; Index < Abilities.Num(); ++Index)
+    {
+        AbilityClasses.Add( GetAbilityByIndex( Index ) );
+    }
+
+    return AbilityClasses;
+}
+
+TArray<FGameplayAbilitySpecHandle> UWeaponComponent::GetAbilities() const
+{
+    return Abilities;
+}
