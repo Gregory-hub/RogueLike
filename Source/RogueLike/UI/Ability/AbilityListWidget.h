@@ -46,6 +46,14 @@ public:
     UFUNCTION( BlueprintCallable, Category = "AbilityList" )
     void SnapToActiveAbility();
 
+    /** Override the configured max widget count at runtime. */
+    UFUNCTION( BlueprintCallable, Category = "AbilityList" )
+    void SetVisibleWidgetLimit( int32 InMaxVisibleWidgets );
+
+    /** Clear the runtime override and use the UPROPERTY default again. */
+    UFUNCTION( BlueprintCallable, Category = "AbilityList" )
+    void ResetVisibleWidgetLimitToDefault();
+
 protected:
     // ------------------ Lifecycle ------------------
 
@@ -123,6 +131,7 @@ protected:
     void RebuildFromWeapon();
     void RebuildStrip();
     void RebuildAbilityEntries();
+    void RefreshVisibleWidgetCount();
     void SyncActiveIndexFromWeapon();
     void ClearWidgetPool();
     void EnsureWidgetPool();
@@ -143,6 +152,8 @@ protected:
     int32 AbilityIndexForWidgetSlot( int32 WidgetSlot ) const;
     float GetStripOriginY() const;
     float GetRemainingScrollDistance() const;
+    int32 GetDesiredWidgetPoolSize() const;
+    int32 GetEffectiveMaxVisibleWidgets() const;
     float EvaluateScrollCurve( float NormalizedTime ) const;
     float EvaluateScrollCurveDerivative( float NormalizedTime ) const;
     float FindVelocityMatchedCurveStart( float Speed, float Distance, float Duration ) const;
@@ -177,4 +188,7 @@ private:
 
     /** Last applied scroll speed in steps/sec (for velocity-matched restarts). */
     float ScrollSpeed = 0.f;
+
+    /** Negative value means use MaxVisibleWidgets from the widget defaults. */
+    int32 RuntimeMaxVisibleWidgets = INDEX_NONE;
 };

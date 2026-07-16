@@ -93,6 +93,25 @@ void UAbilityListWidget::ScrollBy( int32 DeltaSteps )
         RestartScrollAnimation();
 }
 
+void UAbilityListWidget::SetVisibleWidgetLimit( int32 InMaxVisibleWidgets )
+{
+    const int32 NewLimit = FMath::Max( 1, InMaxVisibleWidgets );
+    if ( RuntimeMaxVisibleWidgets == NewLimit )
+        return;
+
+    RuntimeMaxVisibleWidgets = NewLimit;
+    RebuildStrip();
+}
+
+void UAbilityListWidget::ResetVisibleWidgetLimitToDefault()
+{
+    if ( RuntimeMaxVisibleWidgets == INDEX_NONE )
+        return;
+
+    RuntimeMaxVisibleWidgets = INDEX_NONE;
+    RebuildStrip();
+}
+
 void UAbilityListWidget::SnapToActiveAbility()
 {
     if ( WidgetPool.Num() < 2 || Abilities.Num() == 0 )
@@ -195,17 +214,15 @@ bool UAbilityListWidget::CanScroll() const
     return Abilities.Num() > 1 && ActiveIndex != INDEX_NONE;
 }
 
+void UAbilityListWidget::RefreshVisibleWidgetCount()
+{
+    VisibleWidgetCount = FMath::Clamp( Abilities.Num(), 0, GetEffectiveMaxVisibleWidgets() );
+}
+
 void UAbilityListWidget::RebuildStrip()
 {
     ResetScrollAnimation();
-
-    const int32 NewVisibleWidgetCount = FMath::Clamp( Abilities.Num(), 0, MaxVisibleWidgets );
-    if ( NewVisibleWidgetCount != VisibleWidgetCount || WidgetPool.Num() != ( NewVisibleWidgetCount > 0 ? NewVisibleWidgetCount + 2 : 0 ) )
-    {
-        VisibleWidgetCount = NewVisibleWidgetCount;
-        ClearWidgetPool();
-    }
-
+    RefreshVisibleWidgetCount();
     ApplyViewportLayout();
     EnsureWidgetPool();
     FillWidgetPool();
@@ -228,16 +245,12 @@ void UAbilityListWidget::ClearWidgetPool()
 
 void UAbilityListWidget::EnsureWidgetPool()
 {
-    const int32 PoolSize = VisibleWidgetCount > 0 ? VisibleWidgetCount + 2 : 0;
-    if ( !IsValid( AbilityCanvas ) || !AbilityWidgetClass || WidgetPool.Num() == PoolSize )
-        return;
-
-    ClearWidgetPool();
-    if ( PoolSize <= 0 )
+    const int32 PoolSize = GetDesiredWidgetPoolSize();
+    if ( !IsValid( AbilityCanvas ) || !AbilityWidgetClass || WidgetPool.Num() >= PoolSize )
         return;
 
     WidgetPool.Reserve( PoolSize );
-    for ( int32 WidgetSlot = 0; WidgetSlot < PoolSize; ++WidgetSlot )
+    for ( int32 WidgetSlot = WidgetPool.Num(); WidgetSlot < PoolSize; ++WidgetSlot )
     {
         UAbilityWidget* Widget = CreateWidget<UAbilityWidget>( this, AbilityWidgetClass );
         if ( !IsValid( Widget ) )
@@ -446,6 +459,16 @@ float UAbilityListWidget::GetRemainingScrollDistance() const
         return FMath::Max( 0.f, static_cast<float>( -PendingScrollSteps ) + ScrollOffset );
 
     return FMath::Abs( ScrollOffset );
+}
+
+int32 UAbilityListWidget::GetDesiredWidgetPoolSize() const
+{
+    return VisibleWidgetCount > 0 ? VisibleWidgetCount + 2 : 0;
+}
+
+int32 UAbilityListWidget::GetEffectiveMaxVisibleWidgets() const
+{
+    return RuntimeMaxVisibleWidgets > 0 ? RuntimeMaxVisibleWidgets : MaxVisibleWidgets;
 }
 
 void UAbilityListWidget::ResetScrollAnimation()
