@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Curves/CurveFloat.h"
 
 #include "Blueprint/UserWidget.h"
 
@@ -22,6 +21,9 @@ class UWeaponComponent;
  * Circular ability strip UI (view-only).
  * Clipped SizeBox + pooled AbilityWidget film strip; active ability stays on the bottom widget.
  * Reads WeaponComponent for display; never mutates gameplay selection.
+ *
+ * Scroll is velocity-based: ScrollBy adds impulse (instant or via ScrollHitAcceleration).
+ * Optional start/end easing is distance-based (quadratic in, sqrt out).
  */
 UCLASS( Abstract, Blueprintable )
 class ROGUELIKE_API UAbilityListWidget : public UUserWidget
@@ -62,68 +64,94 @@ protected:
 
     // ------------------ Bound widgets ------------------
 
-    UPROPERTY( BlueprintReadOnly, meta = ( BindWidget ), Category = "AbilityList" )
+    UPROPERTY( BlueprintReadOnly, meta = ( BindWidget ), Category = "AbilityList|Widgets" )
     TObjectPtr<USizeBox> ViewportSizeBox;
 
-    UPROPERTY( BlueprintReadOnly, meta = ( BindWidget ), Category = "AbilityList" )
+    UPROPERTY( BlueprintReadOnly, meta = ( BindWidget ), Category = "AbilityList|Widgets" )
     TObjectPtr<UCanvasPanel> AbilityCanvas;
 
-    // ------------------ Designer knobs ------------------
+    // ------------------ Layout ------------------
 
-    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList" )
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Layout" )
     TSubclassOf<UAbilityWidget> AbilityWidgetClass;
 
     /** Max widgets in the strip. Actual count = min(weapon abilities, this). */
-    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList", meta = ( ClampMin = "1" ) )
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Layout", meta = ( ClampMin = "1" ) )
     int32 MaxVisibleWidgets = 4;
 
     /** Distance between consecutive widget tops. */
-    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList", meta = ( ClampMin = "1.0" ) )
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Layout", meta = ( ClampMin = "1.0" ) )
     float SlotStride = 64.f;
 
     /** Strip width (SizeBox override). */
-    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList", meta = ( ClampMin = "1.0" ) )
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Layout", meta = ( ClampMin = "1.0" ) )
     float SlotWidth = 256.f;
 
     /** Widget alignment inside the strip. */
-    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList" )
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Layout" )
     TEnumAsByte<EHorizontalAlignment> SlotHorizontalAlignment = HAlign_Center;
 
     /** Docks this strip in its parent slot / tall root (Bottom = foot of HUD column). */
-    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList" )
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Layout" )
     TEnumAsByte<EVerticalAlignment> SlotVerticalAlignment = VAlign_Bottom;
 
-    /** Nominal time for one scroll animation segment, in seconds. */
-    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList", meta = ( ClampMin = "0.01" ) )
-    float ScrollDuration = 0.2f;
+    // ------------------ Scroll ------------------
+
+    /** Distance (steps) over which start speed eases in from 0 (quadratic). 0 = no start ease. */
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Scroll", meta = ( ClampMin = "0.0" ) )
+    float ScrollStartEaseInDistance = 0.f;
+
+    /** Velocity added per scroll notch, from rest or mid-scroll (steps/sec). */
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Scroll", meta = ( ClampMin = "0.0" ) )
+    float ScrollImpulse = 8.f;
 
     /**
-     * Progress curve over the scroll (X = 0..1 time, Y = 0..1 distance covered).
-     * Empty curve falls back to linear.
+     * How fast queued impulse is applied to ScrollSpeed (steps/sec^2).
+     * 0 = apply the full impulse immediately.
      */
-    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList" )
-    FRuntimeFloatCurve ScrollCurve;
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Scroll", meta = ( ClampMin = "0.0" ) )
+    float ScrollHitAcceleration = 40.f;
 
-    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList" )
+    /**
+     * Remaining distance (steps) over which end speed eases out (sqrt curve).
+     * Smaller = shorter ease-out; sqrt finishes without a crawl.
+     */
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Scroll", meta = ( ClampMin = "0.05" ) )
+    float ScrollEndEaseOutDistance = 0.35f;
+
+    /** Velocity decay while coasting (steps/sec^2). */
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Scroll", meta = ( ClampMin = "0.0" ) )
+    float ScrollFriction = 6.f;
+
+    /** Cap on scroll speed (steps/sec). */
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Scroll", meta = ( ClampMin = "0.1" ) )
+    float ScrollMaxSpeed = 24.f;
+
+    // ------------------ Data ------------------
+
+    UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList|Data" )
     TObjectPtr<UAbilityListDataAsset> AbilityListData;
 
     // ------------------ Runtime state ------------------
 
-    UPROPERTY( BlueprintReadOnly, Category = "AbilityList" )
+    UPROPERTY( BlueprintReadOnly, Category = "AbilityList|Runtime" )
     TWeakObjectPtr<UWeaponComponent> WeaponComponent;
 
-    UPROPERTY( BlueprintReadOnly, Category = "AbilityList" )
+    UPROPERTY( BlueprintReadOnly, Category = "AbilityList|Runtime" )
     TArray<TObjectPtr<UAbilityDataAsset>> Abilities;
 
-    UPROPERTY( BlueprintReadOnly, Category = "AbilityList" )
+    UPROPERTY( BlueprintReadOnly, Category = "AbilityList|Runtime" )
     int32 ActiveIndex = INDEX_NONE;
 
     /** min(Abilities.Num(), MaxVisibleWidgets). Drives pool size and viewport height. */
-    UPROPERTY( BlueprintReadOnly, Category = "AbilityList" )
+    UPROPERTY( BlueprintReadOnly, Category = "AbilityList|Runtime" )
     int32 VisibleWidgetCount = 0;
 
-    /** Pool of VisibleWidgetCount + 2; rotated while scrolling, never resized mid-scroll. */
-    UPROPERTY( BlueprintReadOnly, Category = "AbilityList" )
+    /**
+     * Widget pool. Active film strip is the prefix of size VisibleWidgetCount + 2;
+     * any extras stay parked at the end (grow-only; never deleted on shrink).
+     */
+    UPROPERTY( BlueprintReadOnly, Category = "AbilityList|Runtime" )
     TArray<TObjectPtr<UAbilityWidget>> WidgetPool;
 
     // ------------------ Internals ------------------
@@ -143,9 +171,11 @@ protected:
     void RotateStrip( int32 Direction );
     void UpdateStripVisuals();
     void UpdateScrollAnimation( float InDeltaTime );
-    void RestartScrollAnimation();
-    void RestartScrollAnimationVelocityMatched();
+    void AddScrollImpulse( int32 ImpulseSteps );
     void ResetScrollAnimation();
+    void CommitPendingScrollSteps();
+    void ClearScrollMotionState();
+    void SettleScrollAnimation();
     void AdvanceScrollDistance( float Distance );
 
     int32 WrapIndex( int32 Index ) const;
@@ -154,9 +184,8 @@ protected:
     float GetRemainingScrollDistance() const;
     int32 GetDesiredWidgetPoolSize() const;
     int32 GetEffectiveMaxVisibleWidgets() const;
-    float EvaluateScrollCurve( float NormalizedTime ) const;
-    float EvaluateScrollCurveDerivative( float NormalizedTime ) const;
-    float FindVelocityMatchedCurveStart( float Speed, float Distance, float Duration ) const;
+    float GetEasedScrollSpeed( float RemainingDistance ) const;
+    bool IsScrollInMotion() const;
     bool CanScroll() const;
 
 private:
@@ -168,26 +197,14 @@ private:
     /** Queued scroll steps not yet committed (+ next / - previous). */
     int32 PendingScrollSteps = 0;
 
-    /** Elapsed time of the current animation segment. */
-    float ScrollAnimElapsed = 0.f;
-
-    /** Wall-clock duration of the current animation segment. */
-    float ScrollAnimDuration = 0.f;
-
-    /** Distance (in steps) this segment covers. */
-    float ScrollAnimStartDistance = 0.f;
-
-    /** How much of ScrollAnimStartDistance has already been applied. */
-    float ScrollAnimCovered = 0.f;
-
-    /** Curve time where this segment begins (0 = full curve; >0 = velocity-matched join). */
-    float ScrollAnimCurveStartT = 0.f;
-
-    /** EvaluateScrollCurve(ScrollAnimCurveStartT), cached. */
-    float ScrollAnimCurveStartValue = 0.f;
-
-    /** Last applied scroll speed in steps/sec (for velocity-matched restarts). */
+    /** Current coast speed (steps/sec). */
     float ScrollSpeed = 0.f;
+
+    /** Impulse waiting to be applied via ScrollHitAcceleration (steps/sec). */
+    float ScrollPendingImpulse = 0.f;
+
+    /** Distance traveled since the strip was last settled (for start ease-in). */
+    float ScrollTravelSinceRest = 0.f;
 
     /** Negative value means use MaxVisibleWidgets from the widget defaults. */
     int32 RuntimeMaxVisibleWidgets = INDEX_NONE;

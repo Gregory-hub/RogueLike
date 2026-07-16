@@ -81,16 +81,15 @@ void UAbilityListWidget::ScrollBy( int32 DeltaSteps )
     if ( GetVisibility() == ESlateVisibility::Collapsed || GetVisibility() == ESlateVisibility::Hidden )
         return;
 
-    const bool bWasAnimating = ScrollAnimStartDistance > KINDA_SMALL_NUMBER
-        || PendingScrollSteps != 0
-        || !FMath::IsNearlyZero( ScrollOffset );
-
     PendingScrollSteps += DeltaSteps;
 
-    if ( bWasAnimating && ScrollSpeed > KINDA_SMALL_NUMBER )
-        RestartScrollAnimationVelocityMatched();
-    else
-        RestartScrollAnimation();
+    if ( GetRemainingScrollDistance() <= KINDA_SMALL_NUMBER )
+    {
+        SettleScrollAnimation();
+        return;
+    }
+
+    AddScrollImpulse( DeltaSteps );
 }
 
 void UAbilityListWidget::SetVisibleWidgetLimit( int32 InMaxVisibleWidgets )
@@ -114,7 +113,7 @@ void UAbilityListWidget::ResetVisibleWidgetLimitToDefault()
 
 void UAbilityListWidget::SnapToActiveAbility()
 {
-    if ( WidgetPool.Num() < 2 || Abilities.Num() == 0 )
+    if ( GetDesiredWidgetPoolSize() < 2 || Abilities.Num() == 0 )
         return;
 
     const int32 PreviousIndex = ActiveIndex;
@@ -222,6 +221,7 @@ void UAbilityListWidget::RefreshVisibleWidgetCount()
 void UAbilityListWidget::RebuildStrip()
 {
     ResetScrollAnimation();
+    SyncActiveIndexFromWeapon();
     RefreshVisibleWidgetCount();
     ApplyViewportLayout();
     EnsureWidgetPool();
@@ -354,8 +354,16 @@ void UAbilityListWidget::ApplyWidgetSlotAlignment( UCanvasPanelSlot* CanvasSlot 
 
 void UAbilityListWidget::FillWidgetPool()
 {
-    for ( int32 WidgetSlot = 0; WidgetSlot < WidgetPool.Num(); ++WidgetSlot )
+    const int32 PoolSize = GetDesiredWidgetPoolSize();
+    for ( int32 WidgetSlot = 0; WidgetSlot < PoolSize; ++WidgetSlot )
         FillWidgetSlot( WidgetSlot );
+
+    // Parked extras (grow-only leftovers) stay collapsed and unused.
+    for ( int32 WidgetSlot = PoolSize; WidgetSlot < WidgetPool.Num(); ++WidgetSlot )
+    {
+        if ( IsValid( WidgetPool[WidgetSlot] ) )
+            WidgetPool[WidgetSlot]->SetVisibility( ESlateVisibility::Collapsed );
+    }
 }
 
 void UAbilityListWidget::FillWidgetSlot( int32 WidgetSlot )
@@ -379,7 +387,9 @@ void UAbilityListWidget::FillWidgetSlot( int32 WidgetSlot )
 
 void UAbilityListWidget::RotateStrip( int32 Direction )
 {
-    if ( WidgetPool.Num() < 2 )
+    // Only the active prefix rotates. Extras beyond VisibleWidgetCount+2 stay parked.
+    const int32 PoolSize = GetDesiredWidgetPoolSize();
+    if ( PoolSize < 2 || WidgetPool.Num() < PoolSize )
         return;
 
     if ( Direction > 0 )
@@ -388,17 +398,19 @@ void UAbilityListWidget::RotateStrip( int32 Direction )
 
         // Rotate strip up: visible widgets keep their content; only the new bottom buffer is filled.
         UAbilityWidget* Recycled = WidgetPool[0];
-        WidgetPool.RemoveAt( 0 );
-        WidgetPool.Add( Recycled );
-        FillWidgetSlot( WidgetPool.Num() - 1 );
+        for ( int32 WidgetSlot = 0; WidgetSlot < PoolSize - 1; ++WidgetSlot )
+            WidgetPool[WidgetSlot] = WidgetPool[WidgetSlot + 1];
+        WidgetPool[PoolSize - 1] = Recycled;
+        FillWidgetSlot( PoolSize - 1 );
     }
     else if ( Direction < 0 )
     {
         ActiveIndex = WrapIndex( ActiveIndex - 1 );
 
-        UAbilityWidget* Recycled = WidgetPool.Last();
-        WidgetPool.RemoveAt( WidgetPool.Num() - 1 );
-        WidgetPool.Insert( Recycled, 0 );
+        UAbilityWidget* Recycled = WidgetPool[PoolSize - 1];
+        for ( int32 WidgetSlot = PoolSize - 1; WidgetSlot > 0; --WidgetSlot )
+            WidgetPool[WidgetSlot] = WidgetPool[WidgetSlot - 1];
+        WidgetPool[0] = Recycled;
         FillWidgetSlot( 0 );
     }
 }
@@ -407,6 +419,7 @@ void UAbilityListWidget::UpdateStripVisuals()
 {
     const float OriginY = GetStripOriginY();
     const bool bSettled = FMath::IsNearlyZero( ScrollOffset ) && PendingScrollSteps == 0;
+    const int32 PoolSize = GetDesiredWidgetPoolSize();
 
     // Pool keeps both edge buffers for bidirectional recycle; only the entering side is shown.
     const int32 ScrollDir = PendingScrollSteps != 0
@@ -419,11 +432,17 @@ void UAbilityListWidget::UpdateStripVisuals()
         if ( !IsValid( Widget ) )
             continue;
 
+        if ( WidgetSlot >= PoolSize )
+        {
+            Widget->SetVisibility( ESlateVisibility::Collapsed );
+            continue;
+        }
+
         UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>( Widget->Slot );
         if ( !IsValid( CanvasSlot ) )
             continue;
 
-        // Pool: [buffer above][VisibleWidgetCount widgets][buffer below]. Active = bottom widget.
+        // Active prefix: [buffer above][VisibleWidgetCount widgets][buffer below]. Active = bottom.
         const float SlotY = OriginY + ( static_cast<float>( WidgetSlot - 1 ) - ScrollOffset ) * SlotStride;
         CanvasSlot->SetPosition( FVector2D( 0.f, SlotY ) );
 
@@ -475,136 +494,76 @@ void UAbilityListWidget::ResetScrollAnimation()
 {
     PendingScrollSteps = 0;
     ScrollOffset = 0.f;
-    ScrollAnimElapsed = 0.f;
-    ScrollAnimDuration = 0.f;
-    ScrollAnimStartDistance = 0.f;
-    ScrollAnimCovered = 0.f;
-    ScrollAnimCurveStartT = 0.f;
-    ScrollAnimCurveStartValue = 0.f;
+    ClearScrollMotionState();
+}
+
+void UAbilityListWidget::CommitPendingScrollSteps()
+{
+    while ( PendingScrollSteps > 0 )
+    {
+        RotateStrip( 1 );
+        --PendingScrollSteps;
+    }
+
+    while ( PendingScrollSteps < 0 )
+    {
+        RotateStrip( -1 );
+        ++PendingScrollSteps;
+    }
+
+    ScrollOffset = 0.f;
+}
+
+void UAbilityListWidget::ClearScrollMotionState()
+{
     ScrollSpeed = 0.f;
+    ScrollPendingImpulse = 0.f;
+    ScrollTravelSinceRest = 0.f;
 }
 
-float UAbilityListWidget::EvaluateScrollCurve( float NormalizedTime ) const
+void UAbilityListWidget::SettleScrollAnimation()
 {
-    const float ClampedTime = FMath::Clamp( NormalizedTime, 0.f, 1.f );
-    if ( const FRichCurve* RichCurve = ScrollCurve.GetRichCurveConst() )
-    {
-        if ( RichCurve->GetNumKeys() > 0 )
-            return FMath::Clamp( RichCurve->Eval( ClampedTime ), 0.f, 1.f );
-    }
+    const bool bHadLeftover = PendingScrollSteps != 0 || !FMath::IsNearlyZero( ScrollOffset );
 
-    return ClampedTime;
+    CommitPendingScrollSteps();
+    ClearScrollMotionState();
+
+    const int32 IndexBeforeSync = ActiveIndex;
+    SyncActiveIndexFromWeapon();
+    if ( bHadLeftover || IndexBeforeSync != ActiveIndex )
+        FillWidgetPool();
 }
 
-float UAbilityListWidget::EvaluateScrollCurveDerivative( float NormalizedTime ) const
+bool UAbilityListWidget::IsScrollInMotion() const
 {
-    constexpr float Eps = 1.e-3f;
-    const float T0 = FMath::Clamp( NormalizedTime - Eps, 0.f, 1.f );
-    const float T1 = FMath::Clamp( NormalizedTime + Eps, 0.f, 1.f );
-    const float Denom = T1 - T0;
-    if ( Denom <= KINDA_SMALL_NUMBER )
-        return 1.f;
-
-    return ( EvaluateScrollCurve( T1 ) - EvaluateScrollCurve( T0 ) ) / Denom;
+    return ScrollSpeed > KINDA_SMALL_NUMBER
+        || ScrollPendingImpulse > KINDA_SMALL_NUMBER
+        || PendingScrollSteps != 0
+        || !FMath::IsNearlyZero( ScrollOffset );
 }
 
-float UAbilityListWidget::FindVelocityMatchedCurveStart( float Speed, float Distance, float Duration ) const
+void UAbilityListWidget::AddScrollImpulse( int32 ImpulseSteps )
 {
-    // Segment maps curve t0→1 over Duration covering Distance.
-    // Start speed = Distance * C'(t0) * (1-t0) / ((C(1)-C(t0)) * Duration).
-    // Pick t0 whose start speed is closest to Speed; prefer Duration near ScrollDuration.
-    const float C1 = EvaluateScrollCurve( 1.f );
-    const float TargetSpeed = FMath::Max( Speed, KINDA_SMALL_NUMBER );
-
-    float BestT = 0.f;
-    float BestScore = MAX_flt;
-
-    constexpr int32 SampleCount = 48;
-    for ( int32 Sample = 0; Sample < SampleCount; ++Sample )
-    {
-        const float T0 = static_cast<float>( Sample ) / static_cast<float>( SampleCount );
-        if ( T0 >= 0.98f )
-            break;
-
-        const float C0 = EvaluateScrollCurve( T0 );
-        const float CurveRange = C1 - C0;
-        if ( CurveRange <= KINDA_SMALL_NUMBER )
-            continue;
-
-        const float Deriv = FMath::Max( EvaluateScrollCurveDerivative( T0 ), 0.f );
-        const float TimeFactor = Deriv * ( 1.f - T0 ) / CurveRange;
-        if ( TimeFactor <= KINDA_SMALL_NUMBER )
-            continue;
-
-        // Duration needed for exact speed match at this t0.
-        const float MatchedDuration = Distance * TimeFactor / TargetSpeed;
-        const float StartSpeed = Distance * TimeFactor / FMath::Max( Duration, KINDA_SMALL_NUMBER );
-        const float SpeedError = FMath::Abs( StartSpeed - TargetSpeed );
-        const float DurationError = FMath::Abs( MatchedDuration - Duration ) / FMath::Max( Duration, KINDA_SMALL_NUMBER );
-        const float Score = SpeedError + 0.25f * DurationError * TargetSpeed;
-
-        if ( Score < BestScore )
-        {
-            BestScore = Score;
-            BestT = T0;
-        }
-    }
-
-    return BestT;
+    ScrollPendingImpulse += ScrollImpulse * static_cast<float>( FMath::Abs( ImpulseSteps ) );
 }
 
-void UAbilityListWidget::RestartScrollAnimation()
+float UAbilityListWidget::GetEasedScrollSpeed( float RemainingDistance ) const
 {
-    ScrollAnimCurveStartT = 0.f;
-    ScrollAnimCurveStartValue = EvaluateScrollCurve( 0.f );
-    ScrollAnimDuration = FMath::Max( ScrollDuration, KINDA_SMALL_NUMBER );
-    ScrollAnimStartDistance = GetRemainingScrollDistance();
-    ScrollAnimCovered = 0.f;
-    ScrollAnimElapsed = 0.f;
+    float Speed = FMath::Clamp( ScrollSpeed, 0.f, ScrollMaxSpeed );
 
-    if ( ScrollAnimStartDistance <= KINDA_SMALL_NUMBER )
-        ResetScrollAnimation();
-}
-
-void UAbilityListWidget::RestartScrollAnimationVelocityMatched()
-{
-    const float Remaining = GetRemainingScrollDistance();
-    if ( Remaining <= KINDA_SMALL_NUMBER )
+    // Start ease-in: 0 → full over ScrollStartEaseInDistance (quadratic).
+    if ( ScrollStartEaseInDistance > KINDA_SMALL_NUMBER )
     {
-        ResetScrollAnimation();
-        return;
+        const float StartT = FMath::Clamp( ScrollTravelSinceRest / ScrollStartEaseInDistance, 0.f, 1.f );
+        Speed *= StartT * StartT;
     }
 
-    const float NominalDuration = FMath::Max( ScrollDuration, KINDA_SMALL_NUMBER );
-    const float Speed = FMath::Abs( ScrollSpeed );
-    const float T0 = FindVelocityMatchedCurveStart( Speed, Remaining, NominalDuration );
-    const float C0 = EvaluateScrollCurve( T0 );
-    const float C1 = EvaluateScrollCurve( 1.f );
-    const float CurveRange = C1 - C0;
-    const float Deriv = FMath::Max( EvaluateScrollCurveDerivative( T0 ), KINDA_SMALL_NUMBER );
+    // End ease-out: sqrt keeps speed up then finishes in finite time (no crawl).
+    const float EaseDistance = FMath::Max( ScrollEndEaseOutDistance, KINDA_SMALL_NUMBER );
+    const float EndT = FMath::Clamp( RemainingDistance / EaseDistance, 0.f, 1.f );
+    Speed *= FMath::Sqrt( EndT );
 
-    ScrollAnimCurveStartT = T0;
-    ScrollAnimCurveStartValue = C0;
-    ScrollAnimStartDistance = Remaining;
-    ScrollAnimCovered = 0.f;
-    ScrollAnimElapsed = 0.f;
-
-    // Exact duration so join speed matches current speed; keep curve end at t=1.
-    if ( CurveRange > KINDA_SMALL_NUMBER )
-    {
-        const float TimeFactor = Deriv * ( 1.f - T0 ) / CurveRange;
-        const float MatchedDuration = Remaining * TimeFactor / Speed;
-        ScrollAnimDuration = FMath::Clamp(
-            MatchedDuration,
-            NominalDuration * 0.25f,
-            NominalDuration * 4.f );
-    }
-    else
-    {
-        ScrollAnimCurveStartT = 0.f;
-        ScrollAnimCurveStartValue = EvaluateScrollCurve( 0.f );
-        ScrollAnimDuration = NominalDuration;
-    }
+    return Speed;
 }
 
 void UAbilityListWidget::AdvanceScrollDistance( float Distance )
@@ -642,9 +601,9 @@ void UAbilityListWidget::AdvanceScrollDistance( float Distance )
 
 void UAbilityListWidget::UpdateScrollAnimation( float InDeltaTime )
 {
-    if ( PendingScrollSteps == 0 && FMath::IsNearlyZero( ScrollOffset ) )
+    if ( !IsScrollInMotion() )
     {
-        ResetScrollAnimation();
+        ClearScrollMotionState();
         if ( GetVisibility() != ESlateVisibility::Collapsed && GetVisibility() != ESlateVisibility::Hidden )
             UpdateStripVisuals();
         return;
@@ -657,42 +616,48 @@ void UAbilityListWidget::UpdateScrollAnimation( float InDeltaTime )
         return;
     }
 
-    if ( ScrollAnimStartDistance <= KINDA_SMALL_NUMBER )
-        RestartScrollAnimation();
-
-    ScrollAnimElapsed += InDeltaTime;
-
-    const float Duration = FMath::Max( ScrollAnimDuration, KINDA_SMALL_NUMBER );
-    const float LinearT = FMath::Clamp( ScrollAnimElapsed / Duration, 0.f, 1.f );
-    const float CurveT = FMath::Lerp( ScrollAnimCurveStartT, 1.f, LinearT );
-    const float CurveValue = EvaluateScrollCurve( CurveT );
-    const float CurveRange = FMath::Max( EvaluateScrollCurve( 1.f ) - ScrollAnimCurveStartValue, KINDA_SMALL_NUMBER );
-    const float SegmentT = FMath::Clamp( ( CurveValue - ScrollAnimCurveStartValue ) / CurveRange, 0.f, 1.f );
-    const float TargetCovered = SegmentT * ScrollAnimStartDistance;
-    const float DeltaCovered = FMath::Max( 0.f, TargetCovered - ScrollAnimCovered );
-    ScrollAnimCovered = TargetCovered;
-
-    AdvanceScrollDistance( DeltaCovered );
-
-    if ( InDeltaTime > KINDA_SMALL_NUMBER )
-        ScrollSpeed = DeltaCovered / InDeltaTime;
-
-    if ( LinearT >= 1.f )
+    const float Remaining = GetRemainingScrollDistance();
+    if ( Remaining <= KINDA_SMALL_NUMBER )
     {
-        while ( PendingScrollSteps > 0 )
-        {
-            RotateStrip( 1 );
-            --PendingScrollSteps;
-        }
-
-        while ( PendingScrollSteps < 0 )
-        {
-            RotateStrip( -1 );
-            ++PendingScrollSteps;
-        }
-
-        ResetScrollAnimation();
+        SettleScrollAnimation();
+        UpdateStripVisuals();
+        return;
     }
+
+    // Apply queued impulse: instantly, or ramped by ScrollHitAcceleration (smooth start).
+    if ( ScrollPendingImpulse > KINDA_SMALL_NUMBER )
+    {
+        if ( ScrollHitAcceleration <= KINDA_SMALL_NUMBER )
+        {
+            ScrollSpeed += ScrollPendingImpulse;
+            ScrollPendingImpulse = 0.f;
+        }
+        else
+        {
+            const float Applied = FMath::Min( ScrollPendingImpulse, ScrollHitAcceleration * InDeltaTime );
+            ScrollSpeed += Applied;
+            ScrollPendingImpulse -= Applied;
+        }
+    }
+
+    ScrollSpeed = FMath::Clamp( ScrollSpeed, 0.f, ScrollMaxSpeed );
+
+    float Travel = GetEasedScrollSpeed( Remaining ) * InDeltaTime;
+    if ( Travel > Remaining )
+        Travel = Remaining;
+
+    // Keep finishing even when eased speed is tiny so we never freeze near the end.
+    if ( Travel <= KINDA_SMALL_NUMBER && Remaining > KINDA_SMALL_NUMBER )
+        Travel = FMath::Min( Remaining, Remaining * 8.f * InDeltaTime );
+
+    AdvanceScrollDistance( Travel );
+    ScrollTravelSinceRest += Travel;
+
+    // Coast friction after motion; ease helpers already shape output speed.
+    ScrollSpeed = FMath::Max( 0.f, ScrollSpeed - ScrollFriction * InDeltaTime );
+
+    if ( GetRemainingScrollDistance() <= KINDA_SMALL_NUMBER )
+        SettleScrollAnimation();
 
     UpdateStripVisuals();
 }
