@@ -116,11 +116,12 @@ bool UWeaponComponent::SelectAbilityByIndex( int32 Index )
 TSubclassOf<UGameplayAbility> UWeaponComponent::SelectNextAbility()
 {
     if ( Abilities.Num() == 0 )
-    {
         return nullptr;
-    }
 
-    CurrentAbilityIndex = ( CurrentAbilityIndex + 1 ) % Abilities.Num();
+    if ( CurrentAbilityIndex == INDEX_NONE )
+        CurrentAbilityIndex = 0;
+    else
+        CurrentAbilityIndex = ( CurrentAbilityIndex + 1 ) % Abilities.Num();
 
     return GetAbilityByIndex( CurrentAbilityIndex );
 }
@@ -128,12 +129,12 @@ TSubclassOf<UGameplayAbility> UWeaponComponent::SelectNextAbility()
 TSubclassOf<UGameplayAbility> UWeaponComponent::SelectPreviousAbility()
 {
     if ( Abilities.Num() == 0 )
-    {
         return nullptr;
-    }
 
-    CurrentAbilityIndex--;
-    CurrentAbilityIndex = CurrentAbilityIndex < 0 ? Abilities.Num() - 1 : CurrentAbilityIndex;
+    if ( CurrentAbilityIndex == INDEX_NONE )
+        CurrentAbilityIndex = 0;
+    else
+        CurrentAbilityIndex = CurrentAbilityIndex == 0 ? Abilities.Num() - 1 : CurrentAbilityIndex - 1;
 
     return GetAbilityByIndex( CurrentAbilityIndex );
 }

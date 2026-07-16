@@ -11,7 +11,7 @@
 class UAbilitySystemComponent;
 class UGameplayAbility;
 
-/** Runtime weapon component intended for hands or other attachment points, managing multiple abilities with one active ability per weapon. */
+/** Runtime weapon component, managing multiple abilities with one active ability per weapon. */
 UCLASS( ClassGroup = ( Custom ), meta = ( BlueprintSpawnableComponent ) )
 class ROGUELIKE_API UWeaponComponent : public UActorComponent
 {

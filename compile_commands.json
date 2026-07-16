@@ -1,0 +1,58 @@
+[
+	{
+		"file": "C:\\Users\\greg\\_development\\RogueLike\\Source\\RogueLike\\Characters\\CharacterBase.cpp",
+		"arguments": [
+			"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe",
+			"@C:\\Users\\greg\\_development\\RogueLike\\.vscode\\compileCommands_RogueLike\\RogueLike.1.rsp"
+		],
+		"directory": "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Source"
+	},
+	{
+		"file": "C:\\Users\\greg\\_development\\RogueLike\\Source\\RogueLike\\Gameplay\\GAS\\Attributes\\BasicAttributeSet.cpp",
+		"arguments": [
+			"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe",
+			"@C:\\Users\\greg\\_development\\RogueLike\\.vscode\\compileCommands_RogueLike\\RogueLike.1.rsp"
+		],
+		"directory": "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Source"
+	},
+	{
+		"file": "C:\\Users\\greg\\_development\\RogueLike\\Source\\RogueLike\\Gameplay\\Weapons\\WeaponComponent.cpp",
+		"arguments": [
+			"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe",
+			"@C:\\Users\\greg\\_development\\RogueLike\\.vscode\\compileCommands_RogueLike\\RogueLike.1.rsp"
+		],
+		"directory": "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Source"
+	},
+	{
+		"file": "C:\\Users\\greg\\_development\\RogueLike\\Source\\RogueLike\\Input\\MainPlayerController.cpp",
+		"arguments": [
+			"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe",
+			"@C:\\Users\\greg\\_development\\RogueLike\\.vscode\\compileCommands_RogueLike\\RogueLike.1.rsp"
+		],
+		"directory": "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Source"
+	},
+	{
+		"file": "C:\\Users\\greg\\_development\\RogueLike\\Source\\RogueLike\\RogueLike.cpp",
+		"arguments": [
+			"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe",
+			"@C:\\Users\\greg\\_development\\RogueLike\\.vscode\\compileCommands_RogueLike\\RogueLike.1.rsp"
+		],
+		"directory": "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Source"
+	},
+	{
+		"file": "C:\\Users\\greg\\_development\\RogueLike\\Source\\RogueLike\\UI\\Ability\\AbilityListWidget.cpp",
+		"arguments": [
+			"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe",
+			"@C:\\Users\\greg\\_development\\RogueLike\\.vscode\\compileCommands_RogueLike\\RogueLike.1.rsp"
+		],
+		"directory": "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Source"
+	},
+	{
+		"file": "C:\\Users\\greg\\_development\\RogueLike\\Source\\RogueLike\\UI\\Ability\\AbilityWidget.cpp",
+		"arguments": [
+			"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe",
+			"@C:\\Users\\greg\\_development\\RogueLike\\.vscode\\compileCommands_RogueLike\\RogueLike.1.rsp"
+		],
+		"directory": "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Source"
+	}
+]
