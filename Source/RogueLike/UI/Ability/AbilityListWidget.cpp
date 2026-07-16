@@ -44,8 +44,6 @@ void UAbilityListWidget::NativeConstruct()
         ViewportSizeBox->SetClipping( EWidgetClipping::ClipToBounds );
     if ( IsValid( AbilityCanvas ) )
         AbilityCanvas->SetClipping( EWidgetClipping::ClipToBounds );
-
-    RefreshFromWeapon();
 }
 
 void UAbilityListWidget::NativeTick( const FGeometry& MyGeometry, float InDeltaTime )
@@ -60,12 +58,12 @@ void UAbilityListWidget::InitializeAbilityList( UWeaponComponent* InWeaponCompon
     if ( IsValid( InAbilityListData ) )
         AbilityListData = InAbilityListData;
 
-    RefreshFromWeapon();
+    RebuildFromWeapon();
 }
 
 void UAbilityListWidget::Show()
 {
-    RefreshFromWeapon();
+    SnapToActiveAbility();
     SetVisibility( ESlateVisibility::SelfHitTestInvisible );
 }
 
@@ -83,24 +81,69 @@ void UAbilityListWidget::ScrollBy( int32 DeltaSteps )
     if ( GetVisibility() == ESlateVisibility::Collapsed || GetVisibility() == ESlateVisibility::Hidden )
         return;
 
+    const bool bWasAnimating = ScrollAnimStartDistance > KINDA_SMALL_NUMBER
+        || PendingScrollSteps != 0
+        || !FMath::IsNearlyZero( ScrollOffset );
+
     PendingScrollSteps += DeltaSteps;
-    RestartScrollAnimation();
+
+    if ( bWasAnimating && ScrollSpeed > KINDA_SMALL_NUMBER )
+        RestartScrollAnimationVelocityMatched();
+    else
+        RestartScrollAnimation();
 }
 
-void UAbilityListWidget::ScrollToCurrentAbility()
+void UAbilityListWidget::SnapToActiveAbility()
 {
+    if ( WidgetPool.Num() < 2 || Abilities.Num() == 0 )
+        return;
+
+    const int32 PreviousIndex = ActiveIndex;
     SyncActiveIndexFromWeapon();
-    RebuildSettledView();
+    const int32 TargetIndex = ActiveIndex;
+
+    if ( PreviousIndex == INDEX_NONE || TargetIndex == INDEX_NONE )
+        return;
+
+    // Walk the film strip so RotateStrip owns ActiveIndex + edge fill.
+    ActiveIndex = PreviousIndex;
+
+    const int32 Count = Abilities.Num();
+    int32 ForwardSteps = TargetIndex - PreviousIndex;
+    if ( ForwardSteps < 0 )
+        ForwardSteps += Count;
+
+    if ( ForwardSteps == 0 )
+    {
+        ResetScrollAnimation();
+        UpdateStripVisuals();
+        return;
+    }
+
+    const int32 BackwardSteps = Count - ForwardSteps;
+    if ( ForwardSteps <= BackwardSteps )
+    {
+        for ( int32 Step = 0; Step < ForwardSteps; ++Step )
+            RotateStrip( 1 );
+    }
+    else
+    {
+        for ( int32 Step = 0; Step < BackwardSteps; ++Step )
+            RotateStrip( -1 );
+    }
+
+    ResetScrollAnimation();
+    UpdateStripVisuals();
 }
 
-void UAbilityListWidget::RefreshFromWeapon()
+void UAbilityListWidget::RebuildFromWeapon()
 {
-    RebuildAbilityData();
+    RebuildAbilityEntries();
     SyncActiveIndexFromWeapon();
-    RebuildSettledView();
+    RebuildStrip();
 }
 
-void UAbilityListWidget::RebuildAbilityData()
+void UAbilityListWidget::RebuildAbilityEntries()
 {
     Abilities.Reset();
 
@@ -152,26 +195,26 @@ bool UAbilityListWidget::CanScroll() const
     return Abilities.Num() > 1 && ActiveIndex != INDEX_NONE;
 }
 
-void UAbilityListWidget::RebuildSettledView()
+void UAbilityListWidget::RebuildStrip()
 {
     ResetScrollAnimation();
 
-    const int32 NewShownCount = FMath::Clamp( Abilities.Num(), 0, VisibleCount );
-    if ( NewShownCount != ShownCount || AbilityWidgets.Num() != ( NewShownCount > 0 ? NewShownCount + 2 : 0 ) )
+    const int32 NewVisibleWidgetCount = FMath::Clamp( Abilities.Num(), 0, MaxVisibleWidgets );
+    if ( NewVisibleWidgetCount != VisibleWidgetCount || WidgetPool.Num() != ( NewVisibleWidgetCount > 0 ? NewVisibleWidgetCount + 2 : 0 ) )
     {
-        ShownCount = NewShownCount;
-        ClearPool();
+        VisibleWidgetCount = NewVisibleWidgetCount;
+        ClearWidgetPool();
     }
 
     ApplyViewportLayout();
-    EnsurePool();
-    RebindPool();
-    RefreshTransforms();
+    EnsureWidgetPool();
+    FillWidgetPool();
+    UpdateStripVisuals();
 }
 
-void UAbilityListWidget::ClearPool()
+void UAbilityListWidget::ClearWidgetPool()
 {
-    AbilityWidgets.Reset();
+    WidgetPool.Reset();
 
     if ( !IsValid( AbilityCanvas ) )
         return;
@@ -183,18 +226,18 @@ void UAbilityListWidget::ClearPool()
     }
 }
 
-void UAbilityListWidget::EnsurePool()
+void UAbilityListWidget::EnsureWidgetPool()
 {
-    const int32 PoolSize = ShownCount > 0 ? ShownCount + 2 : 0;
-    if ( !IsValid( AbilityCanvas ) || !AbilityWidgetClass || AbilityWidgets.Num() == PoolSize )
+    const int32 PoolSize = VisibleWidgetCount > 0 ? VisibleWidgetCount + 2 : 0;
+    if ( !IsValid( AbilityCanvas ) || !AbilityWidgetClass || WidgetPool.Num() == PoolSize )
         return;
 
-    ClearPool();
+    ClearWidgetPool();
     if ( PoolSize <= 0 )
         return;
 
-    AbilityWidgets.Reserve( PoolSize );
-    for ( int32 PoolSlot = 0; PoolSlot < PoolSize; ++PoolSlot )
+    WidgetPool.Reserve( PoolSize );
+    for ( int32 WidgetSlot = 0; WidgetSlot < PoolSize; ++WidgetSlot )
     {
         UAbilityWidget* Widget = CreateWidget<UAbilityWidget>( this, AbilityWidgetClass );
         if ( !IsValid( Widget ) )
@@ -206,10 +249,10 @@ void UAbilityListWidget::EnsurePool()
         if ( IsValid( CanvasSlot ) )
         {
             CanvasSlot->SetAutoSize( true );
-            ApplyRowSlotAlignment( CanvasSlot );
+            ApplyWidgetSlotAlignment( CanvasSlot );
         }
 
-        AbilityWidgets.Add( Widget );
+        WidgetPool.Add( Widget );
     }
 }
 
@@ -219,8 +262,8 @@ void UAbilityListWidget::ApplyViewportLayout()
     {
         ViewportSizeBox->SetWidthOverride( SlotWidth );
 
-        if ( ShownCount > 0 )
-            ViewportSizeBox->SetHeightOverride( static_cast<float>( ShownCount ) * SlotStride );
+        if ( VisibleWidgetCount > 0 )
+            ViewportSizeBox->SetHeightOverride( static_cast<float>( VisibleWidgetCount ) * SlotStride );
         else
             ViewportSizeBox->ClearHeightOverride();
     }
@@ -261,11 +304,11 @@ void UAbilityListWidget::ApplyPanelSlotAlignment( UPanelSlot* InSlot, float Alig
 
 float UAbilityListWidget::GetStripOriginY() const
 {
-    const float ContentHeight = static_cast<float>( FMath::Max( ShownCount, 0 ) ) * SlotStride;
+    const float ContentHeight = static_cast<float>( FMath::Max( VisibleWidgetCount, 0 ) ) * SlotStride;
     float AreaHeight = ContentHeight;
 
     // Use the SizeBox (fixed override), not the canvas — AutoSize children inflate canvas
-    // desired size and would shift OriginY, revealing a buffer row.
+    // desired size and would shift OriginY, revealing a buffer widget.
     if ( IsValid( ViewportSizeBox ) )
     {
         const float ViewportHeight = ViewportSizeBox->GetCachedGeometry().GetLocalSize().Y;
@@ -285,7 +328,7 @@ float UAbilityListWidget::GetStripOriginY() const
     }
 }
 
-void UAbilityListWidget::ApplyRowSlotAlignment( UCanvasPanelSlot* CanvasSlot ) const
+void UAbilityListWidget::ApplyWidgetSlotAlignment( UCanvasPanelSlot* CanvasSlot ) const
 {
     if ( !IsValid( CanvasSlot ) )
         return;
@@ -296,19 +339,19 @@ void UAbilityListWidget::ApplyRowSlotAlignment( UCanvasPanelSlot* CanvasSlot ) c
     CanvasSlot->SetAlignment( FVector2D( AnchorX, 0.f ) );
 }
 
-void UAbilityListWidget::RebindPool()
+void UAbilityListWidget::FillWidgetPool()
 {
-    for ( int32 PoolSlot = 0; PoolSlot < AbilityWidgets.Num(); ++PoolSlot )
-        RebindPoolSlot( PoolSlot );
+    for ( int32 WidgetSlot = 0; WidgetSlot < WidgetPool.Num(); ++WidgetSlot )
+        FillWidgetSlot( WidgetSlot );
 }
 
-void UAbilityListWidget::RebindPoolSlot( int32 PoolSlot )
+void UAbilityListWidget::FillWidgetSlot( int32 WidgetSlot )
 {
-    if ( !AbilityWidgets.IsValidIndex( PoolSlot ) || !IsValid( AbilityWidgets[PoolSlot] ) )
+    if ( !WidgetPool.IsValidIndex( WidgetSlot ) || !IsValid( WidgetPool[WidgetSlot] ) )
         return;
 
-    UAbilityWidget* Widget = AbilityWidgets[PoolSlot];
-    const int32 AbilityIdx = AbilityIndexForPoolSlot( PoolSlot );
+    UAbilityWidget* Widget = WidgetPool[WidgetSlot];
+    const int32 AbilityIdx = AbilityIndexForWidgetSlot( WidgetSlot );
     if ( AbilityIdx == INDEX_NONE )
         return;
 
@@ -321,33 +364,33 @@ void UAbilityListWidget::RebindPoolSlot( int32 PoolSlot )
     Widget->FillWidget( Abilities[AbilityIdx]->Name, Abilities[AbilityIdx]->Icon );
 }
 
-void UAbilityListWidget::CommitScrollStep( int32 Direction )
+void UAbilityListWidget::RotateStrip( int32 Direction )
 {
-    if ( AbilityWidgets.Num() < 2 )
+    if ( WidgetPool.Num() < 2 )
         return;
 
     if ( Direction > 0 )
     {
         ActiveIndex = WrapIndex( ActiveIndex + 1 );
 
-        // Rotate strip up: visible rows keep their widgets/content; only the new bottom buffer is filled.
-        UAbilityWidget* Recycled = AbilityWidgets[0];
-        AbilityWidgets.RemoveAt( 0 );
-        AbilityWidgets.Add( Recycled );
-        RebindPoolSlot( AbilityWidgets.Num() - 1 );
+        // Rotate strip up: visible widgets keep their content; only the new bottom buffer is filled.
+        UAbilityWidget* Recycled = WidgetPool[0];
+        WidgetPool.RemoveAt( 0 );
+        WidgetPool.Add( Recycled );
+        FillWidgetSlot( WidgetPool.Num() - 1 );
     }
     else if ( Direction < 0 )
     {
         ActiveIndex = WrapIndex( ActiveIndex - 1 );
 
-        UAbilityWidget* Recycled = AbilityWidgets.Last();
-        AbilityWidgets.RemoveAt( AbilityWidgets.Num() - 1 );
-        AbilityWidgets.Insert( Recycled, 0 );
-        RebindPoolSlot( 0 );
+        UAbilityWidget* Recycled = WidgetPool.Last();
+        WidgetPool.RemoveAt( WidgetPool.Num() - 1 );
+        WidgetPool.Insert( Recycled, 0 );
+        FillWidgetSlot( 0 );
     }
 }
 
-void UAbilityListWidget::RefreshTransforms()
+void UAbilityListWidget::UpdateStripVisuals()
 {
     const float OriginY = GetStripOriginY();
     const bool bSettled = FMath::IsNearlyZero( ScrollOffset ) && PendingScrollSteps == 0;
@@ -357,9 +400,9 @@ void UAbilityListWidget::RefreshTransforms()
         ? FMath::Sign( PendingScrollSteps )
         : FMath::Sign( ScrollOffset );
 
-    for ( int32 PoolSlot = 0; PoolSlot < AbilityWidgets.Num(); ++PoolSlot )
+    for ( int32 WidgetSlot = 0; WidgetSlot < WidgetPool.Num(); ++WidgetSlot )
     {
-        UAbilityWidget* Widget = AbilityWidgets[PoolSlot];
+        UAbilityWidget* Widget = WidgetPool[WidgetSlot];
         if ( !IsValid( Widget ) )
             continue;
 
@@ -367,31 +410,31 @@ void UAbilityListWidget::RefreshTransforms()
         if ( !IsValid( CanvasSlot ) )
             continue;
 
-        // Pool: [buffer above][ShownCount rows][buffer below]. Active = bottom row.
-        const float SlotY = OriginY + ( static_cast<float>( PoolSlot - 1 ) - ScrollOffset ) * SlotStride;
+        // Pool: [buffer above][VisibleWidgetCount widgets][buffer below]. Active = bottom widget.
+        const float SlotY = OriginY + ( static_cast<float>( WidgetSlot - 1 ) - ScrollOffset ) * SlotStride;
         CanvasSlot->SetPosition( FVector2D( 0.f, SlotY ) );
 
-        const bool bContentRow = PoolSlot >= 1 && PoolSlot <= ShownCount;
+        const bool bContentWidget = WidgetSlot >= 1 && WidgetSlot <= VisibleWidgetCount;
         const bool bEnteringBuffer = !bSettled && (
-            ( ScrollDir > 0 && PoolSlot == ShownCount + 1 ) ||
-            ( ScrollDir < 0 && PoolSlot == 0 ) );
+            ( ScrollDir > 0 && WidgetSlot == VisibleWidgetCount + 1 ) ||
+            ( ScrollDir < 0 && WidgetSlot == 0 ) );
 
-        Widget->SetVisibility( ( bContentRow || bEnteringBuffer )
+        Widget->SetVisibility( ( bContentWidget || bEnteringBuffer )
             ? ESlateVisibility::HitTestInvisible
             : ESlateVisibility::Collapsed );
     }
 }
 
-int32 UAbilityListWidget::AbilityIndexForPoolSlot( int32 PoolSlot ) const
+int32 UAbilityListWidget::AbilityIndexForWidgetSlot( int32 WidgetSlot ) const
 {
-    if ( ActiveIndex == INDEX_NONE || ShownCount <= 0 )
+    if ( ActiveIndex == INDEX_NONE || VisibleWidgetCount <= 0 )
         return INDEX_NONE;
 
-    const int32 VisualRow = PoolSlot - 1;
-    if ( VisualRow < -1 || VisualRow > ShownCount )
+    const int32 VisualIndex = WidgetSlot - 1;
+    if ( VisualIndex < -1 || VisualIndex > VisibleWidgetCount )
         return INDEX_NONE;
 
-    return WrapIndex( ActiveIndex - ( ShownCount - 1 ) + VisualRow );
+    return WrapIndex( ActiveIndex - ( VisibleWidgetCount - 1 ) + VisualIndex );
 }
 
 float UAbilityListWidget::GetRemainingScrollDistance() const
@@ -410,8 +453,12 @@ void UAbilityListWidget::ResetScrollAnimation()
     PendingScrollSteps = 0;
     ScrollOffset = 0.f;
     ScrollAnimElapsed = 0.f;
+    ScrollAnimDuration = 0.f;
     ScrollAnimStartDistance = 0.f;
     ScrollAnimCovered = 0.f;
+    ScrollAnimCurveStartT = 0.f;
+    ScrollAnimCurveStartValue = 0.f;
+    ScrollSpeed = 0.f;
 }
 
 float UAbilityListWidget::EvaluateScrollCurve( float NormalizedTime ) const
@@ -426,14 +473,115 @@ float UAbilityListWidget::EvaluateScrollCurve( float NormalizedTime ) const
     return ClampedTime;
 }
 
+float UAbilityListWidget::EvaluateScrollCurveDerivative( float NormalizedTime ) const
+{
+    constexpr float Eps = 1.e-3f;
+    const float T0 = FMath::Clamp( NormalizedTime - Eps, 0.f, 1.f );
+    const float T1 = FMath::Clamp( NormalizedTime + Eps, 0.f, 1.f );
+    const float Denom = T1 - T0;
+    if ( Denom <= KINDA_SMALL_NUMBER )
+        return 1.f;
+
+    return ( EvaluateScrollCurve( T1 ) - EvaluateScrollCurve( T0 ) ) / Denom;
+}
+
+float UAbilityListWidget::FindVelocityMatchedCurveStart( float Speed, float Distance, float Duration ) const
+{
+    // Segment maps curve t0→1 over Duration covering Distance.
+    // Start speed = Distance * C'(t0) * (1-t0) / ((C(1)-C(t0)) * Duration).
+    // Pick t0 whose start speed is closest to Speed; prefer Duration near ScrollDuration.
+    const float C1 = EvaluateScrollCurve( 1.f );
+    const float TargetSpeed = FMath::Max( Speed, KINDA_SMALL_NUMBER );
+
+    float BestT = 0.f;
+    float BestScore = MAX_flt;
+
+    constexpr int32 SampleCount = 48;
+    for ( int32 Sample = 0; Sample < SampleCount; ++Sample )
+    {
+        const float T0 = static_cast<float>( Sample ) / static_cast<float>( SampleCount );
+        if ( T0 >= 0.98f )
+            break;
+
+        const float C0 = EvaluateScrollCurve( T0 );
+        const float CurveRange = C1 - C0;
+        if ( CurveRange <= KINDA_SMALL_NUMBER )
+            continue;
+
+        const float Deriv = FMath::Max( EvaluateScrollCurveDerivative( T0 ), 0.f );
+        const float TimeFactor = Deriv * ( 1.f - T0 ) / CurveRange;
+        if ( TimeFactor <= KINDA_SMALL_NUMBER )
+            continue;
+
+        // Duration needed for exact speed match at this t0.
+        const float MatchedDuration = Distance * TimeFactor / TargetSpeed;
+        const float StartSpeed = Distance * TimeFactor / FMath::Max( Duration, KINDA_SMALL_NUMBER );
+        const float SpeedError = FMath::Abs( StartSpeed - TargetSpeed );
+        const float DurationError = FMath::Abs( MatchedDuration - Duration ) / FMath::Max( Duration, KINDA_SMALL_NUMBER );
+        const float Score = SpeedError + 0.25f * DurationError * TargetSpeed;
+
+        if ( Score < BestScore )
+        {
+            BestScore = Score;
+            BestT = T0;
+        }
+    }
+
+    return BestT;
+}
+
 void UAbilityListWidget::RestartScrollAnimation()
 {
+    ScrollAnimCurveStartT = 0.f;
+    ScrollAnimCurveStartValue = EvaluateScrollCurve( 0.f );
+    ScrollAnimDuration = FMath::Max( ScrollDuration, KINDA_SMALL_NUMBER );
     ScrollAnimStartDistance = GetRemainingScrollDistance();
     ScrollAnimCovered = 0.f;
     ScrollAnimElapsed = 0.f;
 
     if ( ScrollAnimStartDistance <= KINDA_SMALL_NUMBER )
         ResetScrollAnimation();
+}
+
+void UAbilityListWidget::RestartScrollAnimationVelocityMatched()
+{
+    const float Remaining = GetRemainingScrollDistance();
+    if ( Remaining <= KINDA_SMALL_NUMBER )
+    {
+        ResetScrollAnimation();
+        return;
+    }
+
+    const float NominalDuration = FMath::Max( ScrollDuration, KINDA_SMALL_NUMBER );
+    const float Speed = FMath::Abs( ScrollSpeed );
+    const float T0 = FindVelocityMatchedCurveStart( Speed, Remaining, NominalDuration );
+    const float C0 = EvaluateScrollCurve( T0 );
+    const float C1 = EvaluateScrollCurve( 1.f );
+    const float CurveRange = C1 - C0;
+    const float Deriv = FMath::Max( EvaluateScrollCurveDerivative( T0 ), KINDA_SMALL_NUMBER );
+
+    ScrollAnimCurveStartT = T0;
+    ScrollAnimCurveStartValue = C0;
+    ScrollAnimStartDistance = Remaining;
+    ScrollAnimCovered = 0.f;
+    ScrollAnimElapsed = 0.f;
+
+    // Exact duration so join speed matches current speed; keep curve end at t=1.
+    if ( CurveRange > KINDA_SMALL_NUMBER )
+    {
+        const float TimeFactor = Deriv * ( 1.f - T0 ) / CurveRange;
+        const float MatchedDuration = Remaining * TimeFactor / Speed;
+        ScrollAnimDuration = FMath::Clamp(
+            MatchedDuration,
+            NominalDuration * 0.25f,
+            NominalDuration * 4.f );
+    }
+    else
+    {
+        ScrollAnimCurveStartT = 0.f;
+        ScrollAnimCurveStartValue = EvaluateScrollCurve( 0.f );
+        ScrollAnimDuration = NominalDuration;
+    }
 }
 
 void UAbilityListWidget::AdvanceScrollDistance( float Distance )
@@ -458,14 +606,14 @@ void UAbilityListWidget::AdvanceScrollDistance( float Distance )
     {
         ScrollOffset -= 1.f;
         --PendingScrollSteps;
-        CommitScrollStep( 1 );
+        RotateStrip( 1 );
     }
 
     while ( ScrollOffset <= -1.f && PendingScrollSteps < 0 )
     {
         ScrollOffset += 1.f;
         ++PendingScrollSteps;
-        CommitScrollStep( -1 );
+        RotateStrip( -1 );
     }
 }
 
@@ -475,14 +623,14 @@ void UAbilityListWidget::UpdateScrollAnimation( float InDeltaTime )
     {
         ResetScrollAnimation();
         if ( GetVisibility() != ESlateVisibility::Collapsed && GetVisibility() != ESlateVisibility::Hidden )
-            RefreshTransforms();
+            UpdateStripVisuals();
         return;
     }
 
     if ( !CanScroll() )
     {
         ResetScrollAnimation();
-        RefreshTransforms();
+        UpdateStripVisuals();
         return;
     }
 
@@ -491,31 +639,37 @@ void UAbilityListWidget::UpdateScrollAnimation( float InDeltaTime )
 
     ScrollAnimElapsed += InDeltaTime;
 
-    const float Duration = FMath::Max( ScrollDuration, KINDA_SMALL_NUMBER );
+    const float Duration = FMath::Max( ScrollAnimDuration, KINDA_SMALL_NUMBER );
     const float LinearT = FMath::Clamp( ScrollAnimElapsed / Duration, 0.f, 1.f );
-    const float CurvedT = EvaluateScrollCurve( LinearT );
-    const float TargetCovered = CurvedT * ScrollAnimStartDistance;
+    const float CurveT = FMath::Lerp( ScrollAnimCurveStartT, 1.f, LinearT );
+    const float CurveValue = EvaluateScrollCurve( CurveT );
+    const float CurveRange = FMath::Max( EvaluateScrollCurve( 1.f ) - ScrollAnimCurveStartValue, KINDA_SMALL_NUMBER );
+    const float SegmentT = FMath::Clamp( ( CurveValue - ScrollAnimCurveStartValue ) / CurveRange, 0.f, 1.f );
+    const float TargetCovered = SegmentT * ScrollAnimStartDistance;
     const float DeltaCovered = FMath::Max( 0.f, TargetCovered - ScrollAnimCovered );
     ScrollAnimCovered = TargetCovered;
 
     AdvanceScrollDistance( DeltaCovered );
 
+    if ( InDeltaTime > KINDA_SMALL_NUMBER )
+        ScrollSpeed = DeltaCovered / InDeltaTime;
+
     if ( LinearT >= 1.f )
     {
         while ( PendingScrollSteps > 0 )
         {
-            CommitScrollStep( 1 );
+            RotateStrip( 1 );
             --PendingScrollSteps;
         }
 
         while ( PendingScrollSteps < 0 )
         {
-            CommitScrollStep( -1 );
+            RotateStrip( -1 );
             ++PendingScrollSteps;
         }
 
         ResetScrollAnimation();
     }
 
-    RefreshTransforms();
+    UpdateStripVisuals();
 }

@@ -20,7 +20,7 @@ class UWeaponComponent;
 
 /**
  * Circular ability strip UI (view-only).
- * Clipped SizeBox + pooled AbilityWidget film strip; active ability stays on the bottom row.
+ * Clipped SizeBox + pooled AbilityWidget film strip; active ability stays on the bottom widget.
  * Reads WeaponComponent for display; never mutates gameplay selection.
  */
 UCLASS( Abstract, Blueprintable )
@@ -42,9 +42,9 @@ public:
     UFUNCTION( BlueprintCallable, Category = "AbilityList" )
     void ScrollBy( int32 DeltaSteps );
 
-    /** Snap to the weapon's current ability with no animation. */
+    /** Snap strip to the weapon's active ability by rotating the pool (no rebuild, no animation). */
     UFUNCTION( BlueprintCallable, Category = "AbilityList" )
-    void ScrollToCurrentAbility();
+    void SnapToActiveAbility();
 
 protected:
     // ------------------ Lifecycle ------------------
@@ -65,11 +65,11 @@ protected:
     UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList" )
     TSubclassOf<UAbilityWidget> AbilityWidgetClass;
 
-    /** Max rows shown. Actual count is min(weapon abilities, this). */
+    /** Max widgets in the strip. Actual count = min(weapon abilities, this). */
     UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList", meta = ( ClampMin = "1" ) )
-    int32 VisibleCount = 4;
+    int32 MaxVisibleWidgets = 4;
 
-    /** Distance between consecutive row tops. */
+    /** Distance between consecutive widget tops. */
     UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList", meta = ( ClampMin = "1.0" ) )
     float SlotStride = 64.f;
 
@@ -77,7 +77,7 @@ protected:
     UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList", meta = ( ClampMin = "1.0" ) )
     float SlotWidth = 256.f;
 
-    /** Row alignment inside the strip. */
+    /** Widget alignment inside the strip. */
     UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList" )
     TEnumAsByte<EHorizontalAlignment> SlotHorizontalAlignment = HAlign_Center;
 
@@ -85,7 +85,7 @@ protected:
     UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList" )
     TEnumAsByte<EVerticalAlignment> SlotVerticalAlignment = VAlign_Bottom;
 
-    /** Total time to play through the current scroll queue (any length), in seconds. */
+    /** Nominal time for one scroll animation segment, in seconds. */
     UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityList", meta = ( ClampMin = "0.01" ) )
     float ScrollDuration = 0.2f;
 
@@ -110,39 +110,42 @@ protected:
     UPROPERTY( BlueprintReadOnly, Category = "AbilityList" )
     int32 ActiveIndex = INDEX_NONE;
 
-    /** min(Abilities.Num(), VisibleCount). Drives pool size and viewport height. */
+    /** min(Abilities.Num(), MaxVisibleWidgets). Drives pool size and viewport height. */
     UPROPERTY( BlueprintReadOnly, Category = "AbilityList" )
-    int32 ShownCount = 0;
+    int32 VisibleWidgetCount = 0;
 
-    /** Pool of ShownCount + 2; rebound while scrolling, never resized mid-scroll. */
+    /** Pool of VisibleWidgetCount + 2; rotated while scrolling, never resized mid-scroll. */
     UPROPERTY( BlueprintReadOnly, Category = "AbilityList" )
-    TArray<TObjectPtr<UAbilityWidget>> AbilityWidgets;
+    TArray<TObjectPtr<UAbilityWidget>> WidgetPool;
 
     // ------------------ Internals ------------------
 
-    void RefreshFromWeapon();
-    void RebuildSettledView();
-    void RebuildAbilityData();
+    void RebuildFromWeapon();
+    void RebuildStrip();
+    void RebuildAbilityEntries();
     void SyncActiveIndexFromWeapon();
-    void ClearPool();
-    void EnsurePool();
+    void ClearWidgetPool();
+    void EnsureWidgetPool();
     void ApplyViewportLayout();
     void ApplyPanelSlotAlignment( UPanelSlot* InSlot, float AlignX, float AlignY, bool bPinAnchors ) const;
-    void ApplyRowSlotAlignment( UCanvasPanelSlot* CanvasSlot ) const;
-    void RebindPool();
-    void RebindPoolSlot( int32 PoolSlot );
-    void CommitScrollStep( int32 Direction );
-    void RefreshTransforms();
+    void ApplyWidgetSlotAlignment( UCanvasPanelSlot* CanvasSlot ) const;
+    void FillWidgetPool();
+    void FillWidgetSlot( int32 WidgetSlot );
+    void RotateStrip( int32 Direction );
+    void UpdateStripVisuals();
     void UpdateScrollAnimation( float InDeltaTime );
     void RestartScrollAnimation();
+    void RestartScrollAnimationVelocityMatched();
     void ResetScrollAnimation();
     void AdvanceScrollDistance( float Distance );
 
     int32 WrapIndex( int32 Index ) const;
-    int32 AbilityIndexForPoolSlot( int32 PoolSlot ) const;
+    int32 AbilityIndexForWidgetSlot( int32 WidgetSlot ) const;
     float GetStripOriginY() const;
     float GetRemainingScrollDistance() const;
     float EvaluateScrollCurve( float NormalizedTime ) const;
+    float EvaluateScrollCurveDerivative( float NormalizedTime ) const;
+    float FindVelocityMatchedCurveStart( float Speed, float Distance, float Duration ) const;
     bool CanScroll() const;
 
 private:
@@ -154,12 +157,24 @@ private:
     /** Queued scroll steps not yet committed (+ next / - previous). */
     int32 PendingScrollSteps = 0;
 
-    /** Elapsed time of the current queue animation. */
+    /** Elapsed time of the current animation segment. */
     float ScrollAnimElapsed = 0.f;
 
-    /** Remaining distance (in steps) when the current animation was started. */
+    /** Wall-clock duration of the current animation segment. */
+    float ScrollAnimDuration = 0.f;
+
+    /** Distance (in steps) this segment covers. */
     float ScrollAnimStartDistance = 0.f;
 
     /** How much of ScrollAnimStartDistance has already been applied. */
     float ScrollAnimCovered = 0.f;
+
+    /** Curve time where this segment begins (0 = full curve; >0 = velocity-matched join). */
+    float ScrollAnimCurveStartT = 0.f;
+
+    /** EvaluateScrollCurve(ScrollAnimCurveStartT), cached. */
+    float ScrollAnimCurveStartValue = 0.f;
+
+    /** Last applied scroll speed in steps/sec (for velocity-matched restarts). */
+    float ScrollSpeed = 0.f;
 };

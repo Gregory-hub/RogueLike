@@ -15,7 +15,7 @@ class UImage;
 class UTextBlock;
 class UTexture2D;
 
-/** Display-only ability row used inside UAbilityListWidget. */
+/** Display-only ability entry used inside UAbilityListWidget. */
 UCLASS( Abstract, Blueprintable )
 class ROGUELIKE_API UAbilityWidget : public UUserWidget
 {
@@ -36,7 +36,7 @@ protected:
     UPROPERTY( meta = ( BindWidget ) )
     TObjectPtr<UImage> AbilityIcon;
 
-    /** Optional fallback row content when ability data cannot be shown. */
+    /** Optional fallback content when ability data cannot be shown. */
     UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "AbilityWidget" )
     TObjectPtr<UAbilityDataAsset> ErrorAbilityData;
 
