@@ -51,7 +51,10 @@ void UAbilityListWidget::NativeTick( const FGeometry& MyGeometry, float InDeltaT
     Super::NativeTick( MyGeometry, InDeltaTime );
 
     if ( GetVisibility() != ESlateVisibility::Collapsed && GetVisibility() != ESlateVisibility::Hidden )
+    {
         SyncAbilitiesFromWeaponIfNeeded();
+        SyncActiveAbilityFromWeaponIfNeeded();
+    }
 
     UpdateScrollAnimation( InDeltaTime );
 }
@@ -233,18 +236,39 @@ void UAbilityListWidget::SyncActiveIndexFromWeapon()
 {
     if ( Abilities.Num() == 0 )
     {
+        ObservedWeaponAbilityIndex = WeaponComponent.IsValid() ? WeaponComponent->GetCurrentAbilityIndex() : INDEX_NONE;
         ActiveIndex = INDEX_NONE;
         return;
     }
 
     if ( !WeaponComponent.IsValid() )
     {
+        ObservedWeaponAbilityIndex = INDEX_NONE;
         ActiveIndex = ActiveIndex == INDEX_NONE ? 0 : WrapIndex( ActiveIndex );
         return;
     }
 
     const int32 WeaponIndex = WeaponComponent->GetCurrentAbilityIndex();
+    ObservedWeaponAbilityIndex = WeaponIndex;
     ActiveIndex = Abilities.IsValidIndex( WeaponIndex ) ? WeaponIndex : 0;
+}
+
+void UAbilityListWidget::SyncActiveAbilityFromWeaponIfNeeded()
+{
+    if ( !WeaponComponent.IsValid() || Abilities.Num() == 0 )
+        return;
+
+    const int32 WeaponIndex = WeaponComponent->GetCurrentAbilityIndex();
+    if ( WeaponIndex == ObservedWeaponAbilityIndex )
+        return;
+
+    ObservedWeaponAbilityIndex = WeaponIndex;
+    const int32 TargetIndex = Abilities.IsValidIndex( WeaponIndex ) ? WeaponIndex : 0;
+    const bool bScrollTargetsWeapon = IsScrollInMotion() && WrapIndex( ActiveIndex + PendingScrollSteps ) == TargetIndex;
+    if ( bScrollTargetsWeapon || ( !IsScrollInMotion() && ActiveIndex == TargetIndex ) )
+        return;
+
+    SnapToActiveAbility();
 }
 
 int32 UAbilityListWidget::WrapIndex( int32 Index ) const
@@ -577,9 +601,7 @@ void UAbilityListWidget::SettleScrollAnimation()
     CommitPendingScrollSteps();
     ClearScrollMotionState();
 
-    const int32 IndexBeforeSync = ActiveIndex;
-    SyncActiveIndexFromWeapon();
-    if ( bHadLeftover || IndexBeforeSync != ActiveIndex )
+    if ( bHadLeftover )
         FillWidgetPool();
 }
 

@@ -162,6 +162,8 @@ protected:
     void RebuildAbilityEntries();
     void RefreshVisibleWidgetCount();
     void SyncActiveIndexFromWeapon();
+    /** Follow weapon selection changes without interrupting a matching scroll animation. */
+    void SyncActiveAbilityFromWeaponIfNeeded();
     /** Rebuild strip when weapon ability count no longer matches the cached list. */
     void SyncAbilitiesFromWeaponIfNeeded();
     UAbilityDataAsset* ResolveDisplayAbilityData( TSubclassOf<UGameplayAbility> AbilityClass ) const;
@@ -215,4 +217,7 @@ private:
 
     /** Weapon ability count last applied to Abilities / the strip. */
     int32 SyncedWeaponAbilityCount = 0;
+
+    /** Weapon selection last observed by the strip. */
+    int32 ObservedWeaponAbilityIndex = INDEX_NONE;
 };
