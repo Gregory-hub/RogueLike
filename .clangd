@@ -1,0 +1,11 @@
+CompileFlags:
+  CompilationDatabase: .
+
+Index:
+  Background: Build
+
+# UE is built with MSVC; clangd is Clang. Forced includes, UHT macros, and
+# engine headers routinely fail to parse → cascading false errors on every API.
+# Keep navigation/index; hide the noise.
+Diagnostics:
+  Suppress: '*'

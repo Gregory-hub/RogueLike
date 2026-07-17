@@ -1,0 +1,43 @@
+---
+description: Section separator comment style for grouping members in C++ files
+globs: **/*.{h,cpp}
+alwaysApply: false
+---
+
+# Section Separators
+
+Group related members/functions under dash-banner comments so files read top-to-bottom.
+
+## Format
+
+- `// ------------------ Title ------------------` (space after `//`, dashes both sides).
+- Place the banner under the relevant access specifier, not on the same line as it.
+- Blank line after the banner.
+- Use Title Case, short names (e.g. `Public API`, `Designer knobs`, `Runtime state`).
+
+## Example
+
+```cpp
+protected:
+    // ------------------ Bound widgets ------------------
+
+    UPROPERTY( BlueprintReadOnly, meta = ( BindWidget ) )
+    TObjectPtr<USizeBox> ViewportSizeBox;
+
+private:
+    // ------------------ Motion state ------------------
+
+    /** Fractional strip motion; 0 when settled. Positive moves icons up (toward next). */
+    float ScrollOffset = 0.f;
+
+    /** Queued scroll steps not yet committed (+ next / - previous). */
+    int32 PendingScrollSteps = 0;
+```
+
+## Avoid
+
+```cpp
+    //~ Bound widgets            // no dash banner
+    //------------------ x ---   // missing space after //
+    // ---- x ----  public:      // banner sharing the access-specifier line
+```

@@ -1,0 +1,2 @@
+# Keep engine third-party out of semantic search; files remain openable by Agent.
+**/Engine/Source/ThirdParty/

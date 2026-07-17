@@ -1,9 +1,11 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "RogueLike/Gameplay/Weapons/WeaponComponent.h"
+
 #include "Abilities/GameplayAbility.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
+#include "WeaponComponent.h"
 
 UWeaponComponent::UWeaponComponent()
     : CurrentAbilityIndex( INDEX_NONE ), CachedAbilitySystemComponent( nullptr )
@@ -46,9 +48,8 @@ void UWeaponComponent::ResolveAbilitySystemComponent()
     }
 }
 
-UAbilitySystemComponent* UWeaponComponent::GetAbilitySystemComponent()
+UAbilitySystemComponent* UWeaponComponent::GetAbilitySystemComponent() const
 {
-    ResolveAbilitySystemComponent();
     return CachedAbilitySystemComponent;
 }
 
@@ -112,27 +113,30 @@ bool UWeaponComponent::SelectAbilityByIndex( int32 Index )
     return true;
 }
 
-bool UWeaponComponent::SelectNextAbility()
+TSubclassOf<UGameplayAbility> UWeaponComponent::SelectNextAbility()
 {
     if ( Abilities.Num() == 0 )
-    {
-        return false;
-    }
+        return nullptr;
 
-    CurrentAbilityIndex = ( CurrentAbilityIndex + 1 ) % Abilities.Num();
-    return true;
+    if ( CurrentAbilityIndex == INDEX_NONE )
+        CurrentAbilityIndex = 0;
+    else
+        CurrentAbilityIndex = ( CurrentAbilityIndex + 1 ) % Abilities.Num();
+
+    return GetAbilityByIndex( CurrentAbilityIndex );
 }
 
-bool UWeaponComponent::SelectPreviousAbility()
+TSubclassOf<UGameplayAbility> UWeaponComponent::SelectPreviousAbility()
 {
     if ( Abilities.Num() == 0 )
-    {
-        return false;
-    }
+        return nullptr;
 
-    CurrentAbilityIndex--;
-    CurrentAbilityIndex = CurrentAbilityIndex < 0 ? Abilities.Num() - 1 : CurrentAbilityIndex;
-    return true;
+    if ( CurrentAbilityIndex == INDEX_NONE )
+        CurrentAbilityIndex = Abilities.Num() - 1;
+    else
+        CurrentAbilityIndex = CurrentAbilityIndex == 0 ? Abilities.Num() - 1 : CurrentAbilityIndex - 1;
+
+    return GetAbilityByIndex( CurrentAbilityIndex );
 }
 
 bool UWeaponComponent::RemoveAbilityByIndex( int32 Index )
@@ -201,7 +205,56 @@ bool UWeaponComponent::IsCurrentAbilityValid() const
     return CurrentAbilityIndex >= 0 && Abilities.IsValidIndex( CurrentAbilityIndex ) && Abilities[CurrentAbilityIndex].IsValid();
 }
 
+TSubclassOf<UGameplayAbility> UWeaponComponent::GetCurrentAbility() const
+{
+    return GetAbilityByIndex( CurrentAbilityIndex );
+}
+
 int32 UWeaponComponent::GetCurrentAbilityIndex() const
 {
     return CurrentAbilityIndex;
+}
+
+TSubclassOf<UGameplayAbility> UWeaponComponent::GetAbilityByIndex( int32 Index ) const
+{
+    if ( !Abilities.IsValidIndex( Index ) )
+    {
+        return nullptr;
+    }
+
+    UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+    if ( !ASC )
+    {
+        return nullptr;
+    }
+
+    const FGameplayAbilitySpecHandle& Handle = Abilities[Index];
+    if ( Handle.IsValid() )
+    {
+        const FGameplayAbilitySpec* Spec = ASC->FindAbilitySpecFromHandle( Handle );
+        if ( Spec )
+        {
+            return Spec->Ability->GetClass();
+        }
+    }
+
+    return nullptr;
+}
+
+TArray<TSubclassOf<UGameplayAbility>> UWeaponComponent::GetAbilityClasses() const
+{
+    TArray<TSubclassOf<UGameplayAbility>> AbilityClasses;
+    AbilityClasses.Reserve( Abilities.Num() );
+
+    for (int32 Index = 0; Index < Abilities.Num(); ++Index)
+    {
+        AbilityClasses.Add( GetAbilityByIndex( Index ) );
+    }
+
+    return AbilityClasses;
+}
+
+TArray<FGameplayAbilitySpecHandle> UWeaponComponent::GetAbilities() const
+{
+    return Abilities;
 }

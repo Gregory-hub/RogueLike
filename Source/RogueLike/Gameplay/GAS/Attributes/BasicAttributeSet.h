@@ -2,10 +2,11 @@
 
 #pragma once
 
+#include "CoreMinimal.h"
+
 #include "AbilitySystemComponent.h"
 #include "AttributeSet.h"
 #include "BasicAttributeSet.generated.h"
-#include "CoreMinimal.h"
 
 /** Core actor attributes used by the game's ability and health systems. */
 UCLASS()
