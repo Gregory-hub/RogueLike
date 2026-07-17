@@ -162,6 +162,8 @@ protected:
     void RebuildAbilityEntries();
     void RefreshVisibleWidgetCount();
     void SyncActiveIndexFromWeapon();
+    /** Rebuild strip when weapon ability count no longer matches the cached list. */
+    void SyncAbilitiesFromWeaponIfNeeded();
     UAbilityDataAsset* ResolveDisplayAbilityData( TSubclassOf<UGameplayAbility> AbilityClass ) const;
     void ClearWidgetPool();
     void EnsureWidgetPool();
@@ -210,4 +212,7 @@ private:
 
     /** Negative value means use MaxVisibleWidgets from the widget defaults. */
     int32 RuntimeMaxVisibleWidgets = INDEX_NONE;
+
+    /** Weapon ability count last applied to Abilities / the strip. */
+    int32 SyncedWeaponAbilityCount = 0;
 };

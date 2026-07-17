@@ -49,6 +49,10 @@ void UAbilityListWidget::NativeConstruct()
 void UAbilityListWidget::NativeTick( const FGeometry& MyGeometry, float InDeltaTime )
 {
     Super::NativeTick( MyGeometry, InDeltaTime );
+
+    if ( GetVisibility() != ESlateVisibility::Collapsed && GetVisibility() != ESlateVisibility::Hidden )
+        SyncAbilitiesFromWeaponIfNeeded();
+
     UpdateScrollAnimation( InDeltaTime );
 }
 
@@ -75,10 +79,15 @@ void UAbilityListWidget::Hide()
 
 void UAbilityListWidget::ScrollBy( int32 DeltaSteps )
 {
-    if ( DeltaSteps == 0 || !CanScroll() )
+    if ( DeltaSteps == 0 )
         return;
 
     if ( GetVisibility() == ESlateVisibility::Collapsed || GetVisibility() == ESlateVisibility::Hidden )
+        return;
+
+    SyncAbilitiesFromWeaponIfNeeded();
+
+    if ( !CanScroll() )
         return;
 
     PendingScrollSteps += DeltaSteps;
@@ -113,15 +122,27 @@ void UAbilityListWidget::ResetVisibleWidgetLimitToDefault()
 
 void UAbilityListWidget::SnapToActiveAbility()
 {
-    if ( GetDesiredWidgetPoolSize() < 2 || Abilities.Num() == 0 )
+    SyncAbilitiesFromWeaponIfNeeded();
+
+    if ( Abilities.Num() == 0 )
         return;
 
     const int32 PreviousIndex = ActiveIndex;
     SyncActiveIndexFromWeapon();
     const int32 TargetIndex = ActiveIndex;
 
-    if ( PreviousIndex == INDEX_NONE || TargetIndex == INDEX_NONE )
+    if ( TargetIndex == INDEX_NONE )
         return;
+
+    // First layout or pool too small to rotate — fill in place.
+    if ( PreviousIndex == INDEX_NONE || GetDesiredWidgetPoolSize() < 2 )
+    {
+        ActiveIndex = TargetIndex;
+        ResetScrollAnimation();
+        FillWidgetPool();
+        UpdateStripVisuals();
+        return;
+    }
 
     // Walk the film strip so RotateStrip owns ActiveIndex + edge fill.
     ActiveIndex = PreviousIndex;
@@ -157,22 +178,42 @@ void UAbilityListWidget::SnapToActiveAbility()
 void UAbilityListWidget::RebuildFromWeapon()
 {
     RebuildAbilityEntries();
+    SyncedWeaponAbilityCount = WeaponComponent.IsValid() ? WeaponComponent->GetAbilityCount() : 0;
     SyncActiveIndexFromWeapon();
     RebuildStrip();
+}
+
+void UAbilityListWidget::SyncAbilitiesFromWeaponIfNeeded()
+{
+    if ( !WeaponComponent.IsValid() )
+        return;
+
+    const int32 WeaponCount = WeaponComponent->GetAbilityCount();
+    const int32 ExpectedVisible = FMath::Clamp( WeaponCount, 0, GetEffectiveMaxVisibleWidgets() );
+    const int32 ExpectedPoolSize = ExpectedVisible > 0 ? ExpectedVisible + 2 : 0;
+
+    const bool bAbilityCountMismatch = WeaponCount != SyncedWeaponAbilityCount || WeaponCount != Abilities.Num();
+    const bool bVisibleCountMismatch = VisibleWidgetCount != ExpectedVisible;
+    const bool bNeedsMoreWidgets = WidgetPool.Num() < ExpectedPoolSize;
+
+    if ( !bAbilityCountMismatch && !bVisibleCountMismatch && !bNeedsMoreWidgets )
+        return;
+
+    RebuildFromWeapon();
 }
 
 void UAbilityListWidget::RebuildAbilityEntries()
 {
     Abilities.Reset();
 
-    if ( !IsValid( AbilityListData ) || !WeaponComponent.IsValid() )
+    if ( !WeaponComponent.IsValid() )
         return;
 
-    for ( const TSubclassOf<UGameplayAbility>& AbilityClass : WeaponComponent->GetAbilityClasses() )
-    {
-        if ( UAbilityDataAsset* AbilityData = ResolveDisplayAbilityData( AbilityClass ) )
-            Abilities.Add( AbilityData );
-    }
+    const int32 Count = WeaponComponent->GetAbilityCount();
+    Abilities.Reserve( Count );
+
+    for ( int32 Index = 0; Index < Count; ++Index )
+        Abilities.Add( ResolveDisplayAbilityData( WeaponComponent->GetAbilityByIndex( Index ) ) );
 }
 
 UAbilityDataAsset* UAbilityListWidget::ResolveDisplayAbilityData( TSubclassOf<UGameplayAbility> AbilityClass ) const
@@ -202,29 +243,8 @@ void UAbilityListWidget::SyncActiveIndexFromWeapon()
         return;
     }
 
-    const TSubclassOf<UGameplayAbility> CurrentAbilityClass = WeaponComponent->GetCurrentAbility();
-    if ( !CurrentAbilityClass )
-    {
-        ActiveIndex = 0;
-        return;
-    }
-
-    int32 DisplayIndex = 0;
-    for ( const TSubclassOf<UGameplayAbility>& AbilityClass : WeaponComponent->GetAbilityClasses() )
-    {
-        if ( !ResolveDisplayAbilityData( AbilityClass ) )
-            continue;
-
-        if ( AbilityClass == CurrentAbilityClass )
-        {
-            ActiveIndex = DisplayIndex;
-            return;
-        }
-
-        ++DisplayIndex;
-    }
-
-    ActiveIndex = 0;
+    const int32 WeaponIndex = WeaponComponent->GetCurrentAbilityIndex();
+    ActiveIndex = Abilities.IsValidIndex( WeaponIndex ) ? WeaponIndex : 0;
 }
 
 int32 UAbilityListWidget::WrapIndex( int32 Index ) const
