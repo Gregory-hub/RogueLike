@@ -170,14 +170,22 @@ void UAbilityListWidget::RebuildAbilityEntries()
 
     for ( const TSubclassOf<UGameplayAbility>& AbilityClass : WeaponComponent->GetAbilityClasses() )
     {
-        const TSoftObjectPtr<UAbilityDataAsset>* FoundData = AbilityListData->Abilities.Find( AbilityClass );
-        if ( FoundData == nullptr || FoundData->IsNull() )
-            continue;
-
-        UAbilityDataAsset* AbilityData = FoundData->LoadSynchronous();
-        if ( IsValid( AbilityData ) )
+        if ( UAbilityDataAsset* AbilityData = ResolveDisplayAbilityData( AbilityClass ) )
             Abilities.Add( AbilityData );
     }
+}
+
+UAbilityDataAsset* UAbilityListWidget::ResolveDisplayAbilityData( TSubclassOf<UGameplayAbility> AbilityClass ) const
+{
+    if ( !IsValid( AbilityListData ) || !AbilityClass )
+        return nullptr;
+
+    const TSoftObjectPtr<UAbilityDataAsset>* FoundData = AbilityListData->Abilities.Find( AbilityClass );
+    if ( FoundData == nullptr || FoundData->IsNull() )
+        return nullptr;
+
+    UAbilityDataAsset* AbilityData = FoundData->LoadSynchronous();
+    return IsValid( AbilityData ) ? AbilityData : nullptr;
 }
 
 void UAbilityListWidget::SyncActiveIndexFromWeapon()
@@ -194,8 +202,29 @@ void UAbilityListWidget::SyncActiveIndexFromWeapon()
         return;
     }
 
-    const int32 WeaponIndex = WeaponComponent->GetCurrentAbilityIndex();
-    ActiveIndex = WeaponIndex == INDEX_NONE ? 0 : WrapIndex( WeaponIndex );
+    const TSubclassOf<UGameplayAbility> CurrentAbilityClass = WeaponComponent->GetCurrentAbility();
+    if ( !CurrentAbilityClass )
+    {
+        ActiveIndex = 0;
+        return;
+    }
+
+    int32 DisplayIndex = 0;
+    for ( const TSubclassOf<UGameplayAbility>& AbilityClass : WeaponComponent->GetAbilityClasses() )
+    {
+        if ( !ResolveDisplayAbilityData( AbilityClass ) )
+            continue;
+
+        if ( AbilityClass == CurrentAbilityClass )
+        {
+            ActiveIndex = DisplayIndex;
+            return;
+        }
+
+        ++DisplayIndex;
+    }
+
+    ActiveIndex = 0;
 }
 
 int32 UAbilityListWidget::WrapIndex( int32 Index ) const

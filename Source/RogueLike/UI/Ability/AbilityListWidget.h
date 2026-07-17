@@ -11,6 +11,7 @@
 class UAbilityDataAsset;
 class UAbilityListDataAsset;
 class UAbilityWidget;
+class UGameplayAbility;
 class UCanvasPanel;
 class UCanvasPanelSlot;
 class UPanelSlot;
@@ -161,6 +162,7 @@ protected:
     void RebuildAbilityEntries();
     void RefreshVisibleWidgetCount();
     void SyncActiveIndexFromWeapon();
+    UAbilityDataAsset* ResolveDisplayAbilityData( TSubclassOf<UGameplayAbility> AbilityClass ) const;
     void ClearWidgetPool();
     void EnsureWidgetPool();
     void ApplyViewportLayout();

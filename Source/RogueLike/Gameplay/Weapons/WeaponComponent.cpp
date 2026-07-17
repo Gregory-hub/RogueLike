@@ -132,7 +132,7 @@ TSubclassOf<UGameplayAbility> UWeaponComponent::SelectPreviousAbility()
         return nullptr;
 
     if ( CurrentAbilityIndex == INDEX_NONE )
-        CurrentAbilityIndex = 0;
+        CurrentAbilityIndex = Abilities.Num() - 1;
     else
         CurrentAbilityIndex = CurrentAbilityIndex == 0 ? Abilities.Num() - 1 : CurrentAbilityIndex - 1;
 
