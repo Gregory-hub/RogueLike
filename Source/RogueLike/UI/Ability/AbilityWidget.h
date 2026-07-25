@@ -29,6 +29,9 @@ public:
     UFUNCTION( BlueprintCallable, Category = "AbilityWidget" )
     void ShowError();
 
+    UFUNCTION( BlueprintCallable, Category = "AbilityWidget" )
+    void SetNameVisible( bool bVisible );
+
 protected:
     UPROPERTY( meta = ( BindWidget ) )
     TObjectPtr<UTextBlock> AbilityName;

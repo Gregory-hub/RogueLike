@@ -537,6 +537,8 @@ void UAbilityListWidget::UpdateStripVisuals()
     const float OriginY = GetStripOriginY();
     const bool bSettled = FMath::IsNearlyZero( ScrollOffset ) && PendingScrollSteps == 0;
     const int32 PoolSize = GetDesiredWidgetPoolSize();
+    // Compact = single visible slot (show names). Long list = multiple slots (icons only).
+    const bool bShowNames = VisibleWidgetCount <= 1;
 
     // Pool keeps both edge buffers for bidirectional recycle; only the entering side is shown.
     const int32 ScrollDir = PendingScrollSteps != 0
@@ -571,6 +573,8 @@ void UAbilityListWidget::UpdateStripVisuals()
         Widget->SetVisibility( ( bContentWidget || bEnteringBuffer )
             ? ESlateVisibility::HitTestInvisible
             : ESlateVisibility::Collapsed );
+
+        Widget->SetNameVisible( bShowNames );
     }
 }
 
