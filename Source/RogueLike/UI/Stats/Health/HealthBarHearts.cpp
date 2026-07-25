@@ -22,9 +22,8 @@ void UHealthBarHearts::NativePreConstruct()
         {
             HorizontalBox->ClearChildren();
         }
-        
-
         Hearts.Reset();
+
         UpdateMaxHealth( PreviewHealth );
         UpdateCurrentHealth( PreviewHealth );
     }
@@ -130,12 +129,27 @@ void UHealthBarHearts::UpdateMaxHealth( float NewHealth )
     }
 
     UpdateMaxHearts( NewHeartNum );
+
+    UAbilitySystemComponent* AbilitySystem = CachedAbilitySystem.Get();
+    if ( IsValid( AbilitySystem ) )
+    {
+        bool bFound = false;
+        const float CurrentHealth = AbilitySystem->GetGameplayAttributeValue( UBasicAttributeSet::GetHealthAttribute(), bFound );
+        if ( bFound )
+        {
+            UpdateCurrentHealth( CurrentHealth );
+        }
+    }
 }
 
 void UHealthBarHearts::UpdateMaxHearts( int MaxHearts )
 {
     if ( MaxHearts <= 0 )
     {
+        if ( IsValid( HorizontalBox ) )
+        {
+            HorizontalBox->ClearChildren();
+        }
         Hearts.Reset();
         return;
     }
@@ -244,7 +258,7 @@ void UHealthBarHearts::UpdateFilledHearts( int NewHalfHearts )
     {
         return;
     }
-    
+
     NewHalfHearts = FMath::Min( NewHalfHearts, Hearts.Num() * 2 );
 
     int i = 0;
@@ -266,7 +280,7 @@ void UHealthBarHearts::UpdateFilledHearts( int NewHalfHearts )
         i++;
     }
 
-    while ( i < Hearts.Num() && !Hearts[i]->IsEmpty() )
+    while ( i < Hearts.Num() && ( !IsValid( Hearts[i] ) || !Hearts[i]->IsEmpty() ) )
     {
         if ( IsValid( Hearts[i] ) )
         {
