@@ -3,6 +3,7 @@
 #include "HealthBarHearts.h"
 
 #include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
 #include "Components/ScaleBox.h"
 
@@ -10,6 +11,23 @@
 #include "Blueprint/WidgetTree.h"
 #include "RogueLike/Characters/CharacterBase.h"
 #include "RogueLike/Gameplay/GAS/Attributes/BasicAttributeSet.h"
+
+void UHealthBarHearts::NativePreConstruct()
+{
+    Super::NativePreConstruct();
+
+    if ( IsDesignTime() )
+    {
+        if ( IsValid( HorizontalBox ) )
+        {
+            HorizontalBox->ClearChildren();
+        }
+
+        Images.Reset();
+        HalfHeartNum = 0;
+        UpdateHealthBar( PreviewHealth );
+    }
+}
 
 void UHealthBarHearts::NativeConstruct()
 {
@@ -80,8 +98,7 @@ int UHealthBarHearts::AddHeartImages( int HalfHeartsToAdd )
     int HalfHeartsAdded = 0;
 
     // If last heart is half replace it with full one
-    if ( !Images.IsEmpty() && IsValid( Images.Last() ) && IsValid( TextureFullHeart )
-         && Cast<UTexture2D>( Images.Last()->GetBrush().GetResourceObject() ) == TextureHalfHeart )
+    if ( !Images.IsEmpty() && IsValid( Images.Last() ) && IsValid( TextureFullHeart ) && Cast<UTexture2D>( Images.Last()->GetBrush().GetResourceObject() ) == TextureHalfHeart )
     {
         Images.Last()->SetBrushFromTexture( TextureFullHeart, true );
         HalfHeartsAdded++;
@@ -123,8 +140,7 @@ int UHealthBarHearts::RemoveHeartImages( int HalfHeartsToRemove )
 
     if ( HalfHeartsToRemove - HalfHeartsRemoved > 0 )
     {
-        if ( !Images.IsEmpty() && IsValid( Images.Last() ) && IsValid( TextureHalfHeart )
-             && Cast<UTexture2D>( Images.Last()->GetBrush().GetResourceObject() ) == TextureFullHeart )
+        if ( !Images.IsEmpty() && IsValid( Images.Last() ) && IsValid( TextureHalfHeart ) && Cast<UTexture2D>( Images.Last()->GetBrush().GetResourceObject() ) == TextureFullHeart )
         {
             // Replace full heart with half heart
             Images.Last()->SetBrushFromTexture( TextureHalfHeart, true );
@@ -178,7 +194,10 @@ int UHealthBarHearts::AddHeartImage( UTexture2D* Texture )
 
     HeartImage->SetBrushFromTexture( Texture, true );
 
-    HorizontalBox->AddChildToHorizontalBox( ScaleBox );
+    UHorizontalBoxSlot* BoxSlot = HorizontalBox->AddChildToHorizontalBox( ScaleBox );
+    if ( IsValid( BoxSlot ) )
+        BoxSlot->SetPadding( HeartPadding );
+
     ScaleBox->AddChild( HeartImage );
 
     Images.Add( HeartImage );

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 
 #include "Blueprint/UserWidget.h"
+#include "Layout/Margin.h"
 
 #include "HealthBarHearts.generated.h"
 
@@ -32,9 +33,16 @@ protected:
     UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "HealthBarHearts", meta = ( ClampMin = 0.01 ) )
     float HealthPerHalfHeart = 0.5f;
 
+    UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "HealthBarHearts", meta = ( ClampMin = 0 ) )
+    FMargin HeartPadding;
+
+    UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "HealthBarHearts|Preview", meta = ( ClampMin = 0 ) )
+    float PreviewHealth = 3.f;
+
     UPROPERTY( BlueprintReadOnly, Category = "HealthBarHearts", meta = ( BindWidget ) )
     TObjectPtr<UHorizontalBox> HorizontalBox;
 
+    virtual void NativePreConstruct() override;
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
 
