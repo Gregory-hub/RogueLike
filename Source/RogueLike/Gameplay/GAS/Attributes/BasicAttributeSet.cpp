@@ -5,7 +5,7 @@
 
 UBasicAttributeSet::UBasicAttributeSet()
 {
-    MaxHealth = 6.0f;
+    MaxHealth = 3.0f;
     Health = MaxHealth;
 }
 

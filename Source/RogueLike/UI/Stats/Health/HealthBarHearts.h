@@ -9,6 +9,7 @@
 
 #include "HealthBarHearts.generated.h"
 
+class UHeartWidget;
 class UAbilitySystemComponent;
 class UImage;
 struct FOnAttributeChangeData;
@@ -25,10 +26,7 @@ class ROGUELIKE_API UHealthBarHearts : public UUserWidget
 
 protected:
     UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "HealthBarHearts" )
-    TObjectPtr<UTexture2D> TextureHalfHeart;
-
-    UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "HealthBarHearts" )
-    TObjectPtr<UTexture2D> TextureFullHeart;
+    TSubclassOf<UHeartWidget> HeartWidgetClass;
 
     UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "HealthBarHearts", meta = ( ClampMin = 0.01 ) )
     float HealthPerHalfHeart = 0.5f;
@@ -46,27 +44,37 @@ protected:
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
 
-    void UpdateHealthBar( const FOnAttributeChangeData& Data );
-    void UpdateHealthBar( float NewHealth );
-
 private:
-    // Returns number of half hearts added
-    int AddHeartImages( int HalfHeartsToAdd );
-    
-    // Returns number of half hearts removed
-    int RemoveHeartImages( int HalfHeartsToRemove );
-    
-    // Returns number of half hearts added
-    int AddHeartImage( UTexture2D* Texture );
+    // ------------------ Delegates ------------------
 
-    // Returns number of half hearts removed
-    int RemoveHeartImage();
+    void UpdateCurrentHealth( const FOnAttributeChangeData& Data );
+    void UpdateCurrentHealth( float NewHealth );
 
-    int HalfHeartNum = 0;
+    void UpdateMaxHealth( const FOnAttributeChangeData& Data );
+    void UpdateMaxHealth( float NewHealth );
+
+    // ------------------ Heart widgets lifecycle ------------------
+
+    void UpdateMaxHearts( int MaxHearts );
+
+    void PushHearts( int Count );
+    void PopHearts( int Count );
+
+    void PushHeart();
+    void PopHeart();
+
+    // ------------------ Heart widgets contents ------------------
+
+    void UpdateFilledHearts( int NewHalfHearts );
+
+    // ------------------ State ------------------
 
     UPROPERTY()
-    TArray<TObjectPtr<UImage>> Images;
+    TArray<TObjectPtr<UHeartWidget>> Hearts;
+
+    // ------------------ Cache ------------------
 
     FDelegateHandle HealthChangedHandle;
+    FDelegateHandle MaxHealthChangedHandle;
     TWeakObjectPtr<UAbilitySystemComponent> CachedAbilitySystem;
 };

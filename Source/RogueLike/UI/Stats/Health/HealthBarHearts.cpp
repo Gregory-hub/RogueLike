@@ -5,10 +5,10 @@
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
-#include "Components/ScaleBox.h"
 
 #include "AbilitySystemComponent.h"
 #include "Blueprint/WidgetTree.h"
+#include "HeartWidget.h"
 #include "RogueLike/Characters/CharacterBase.h"
 #include "RogueLike/Gameplay/GAS/Attributes/BasicAttributeSet.h"
 
@@ -22,10 +22,11 @@ void UHealthBarHearts::NativePreConstruct()
         {
             HorizontalBox->ClearChildren();
         }
+        
 
-        Images.Reset();
-        HalfHeartNum = 0;
-        UpdateHealthBar( PreviewHealth );
+        Hearts.Reset();
+        UpdateMaxHealth( PreviewHealth );
+        UpdateCurrentHealth( PreviewHealth );
     }
 }
 
@@ -38,13 +39,23 @@ void UHealthBarHearts::NativeConstruct()
         if ( auto* AbilitySystem = Character->GetAbilitySystemComponent(); IsValid( AbilitySystem ) )
         {
             CachedAbilitySystem = AbilitySystem;
-            HealthChangedHandle = AbilitySystem->GetGameplayAttributeValueChangeDelegate( UBasicAttributeSet::GetHealthAttribute() )
-                                      .AddUObject( this, &UHealthBarHearts::UpdateHealthBar );
+
+            auto& OnHealthChanged = AbilitySystem->GetGameplayAttributeValueChangeDelegate( UBasicAttributeSet::GetHealthAttribute() );
+            HealthChangedHandle = OnHealthChanged.AddUObject( this, &UHealthBarHearts::UpdateCurrentHealth );
+
+            auto& OnMaxHealthChanged = AbilitySystem->GetGameplayAttributeValueChangeDelegate( UBasicAttributeSet::GetMaxHealthAttribute() );
+            MaxHealthChangedHandle = OnMaxHealthChanged.AddUObject( this, &UHealthBarHearts::UpdateMaxHealth );
+
             bool Found;
+            float MaxHealth = AbilitySystem->GetGameplayAttributeValue( UBasicAttributeSet::GetMaxHealthAttribute(), Found );
+            if ( Found )
+            {
+                UpdateMaxHealth( MaxHealth );
+            }
             float Health = AbilitySystem->GetGameplayAttributeValue( UBasicAttributeSet::GetHealthAttribute(), Found );
             if ( Found )
             {
-                UpdateHealthBar( Health );
+                UpdateCurrentHealth( Health );
             }
         }
     }
@@ -52,24 +63,36 @@ void UHealthBarHearts::NativeConstruct()
 
 void UHealthBarHearts::NativeDestruct()
 {
-    if ( UAbilitySystemComponent* AbilitySystem = CachedAbilitySystem.Get();
-         IsValid( AbilitySystem ) && HealthChangedHandle.IsValid() )
+    if ( UAbilitySystemComponent* AbilitySystem = CachedAbilitySystem.Get() )
     {
-        AbilitySystem->GetGameplayAttributeValueChangeDelegate( UBasicAttributeSet::GetHealthAttribute() )
-            .Remove( HealthChangedHandle );
-        HealthChangedHandle.Reset();
+        if ( IsValid( AbilitySystem ) )
+        {
+            if ( HealthChangedHandle.IsValid() )
+            {
+                AbilitySystem->GetGameplayAttributeValueChangeDelegate( UBasicAttributeSet::GetHealthAttribute() )
+                    .Remove( HealthChangedHandle );
+                HealthChangedHandle.Reset();
+            }
+
+            if ( MaxHealthChangedHandle.IsValid() )
+            {
+                AbilitySystem->GetGameplayAttributeValueChangeDelegate( UBasicAttributeSet::GetMaxHealthAttribute() )
+                    .Remove( MaxHealthChangedHandle );
+                MaxHealthChangedHandle.Reset();
+            }
+        }
     }
     CachedAbilitySystem.Reset();
 
     Super::NativeDestruct();
 }
 
-void UHealthBarHearts::UpdateHealthBar( const FOnAttributeChangeData& Data )
+void UHealthBarHearts::UpdateCurrentHealth( const FOnAttributeChangeData& Data )
 {
-    UpdateHealthBar( Data.NewValue );
+    UpdateCurrentHealth( Data.NewValue );
 }
 
-void UHealthBarHearts::UpdateHealthBar( float NewHealth )
+void UHealthBarHearts::UpdateCurrentHealth( float NewHealth )
 {
     if ( HealthPerHalfHeart <= 0.f )
     {
@@ -79,164 +102,176 @@ void UHealthBarHearts::UpdateHealthBar( float NewHealth )
     const int NewHalfHeartNum = static_cast<int>( NewHealth / HealthPerHalfHeart );
     if ( NewHalfHeartNum < 0 )
     {
-        UE_LOG( LogTemp, Error, TEXT( "Health / HealthPerHalfHeart is less that 0" ) );
+        UE_LOG( LogTemp, Error, TEXT( "NewHalfHeartNum is less that 0" ) );
         return;
     }
 
-    if ( NewHalfHeartNum > HalfHeartNum )
+    UpdateFilledHearts( NewHalfHeartNum );
+}
+
+void UHealthBarHearts::UpdateMaxHealth( const FOnAttributeChangeData& Data )
+{
+    UpdateMaxHealth( Data.NewValue );
+}
+
+void UHealthBarHearts::UpdateMaxHealth( float NewHealth )
+{
+    if ( HealthPerHalfHeart <= 0.f )
     {
-        HalfHeartNum += AddHeartImages( NewHalfHeartNum - HalfHeartNum );
+        return;
     }
-    else if ( NewHalfHeartNum < HalfHeartNum )
+
+    int HalfHearts = FMath::FloorToInt( NewHealth / HealthPerHalfHeart );
+    const int NewHeartNum = FMath::CeilToInt( StaticCast<float>( HalfHearts ) / 2.0f );
+    if ( NewHeartNum < 0 )
     {
-        HalfHeartNum -= RemoveHeartImages( HalfHeartNum - NewHalfHeartNum );
+        UE_LOG( LogTemp, Error, TEXT( "NewHalfHeartNum is less that 0" ) );
+        return;
+    }
+
+    UpdateMaxHearts( NewHeartNum );
+}
+
+void UHealthBarHearts::UpdateMaxHearts( int MaxHearts )
+{
+    if ( MaxHearts <= 0 )
+    {
+        Hearts.Reset();
+        return;
+    }
+
+    int HeartsToAdd = MaxHearts - Hearts.Num();
+    if ( HeartsToAdd > 0 )
+    {
+        PushHearts( HeartsToAdd );
+    }
+    else if ( HeartsToAdd < 0 )
+    {
+        PopHearts( -HeartsToAdd );
     }
 }
 
-int UHealthBarHearts::AddHeartImages( int HalfHeartsToAdd )
+void UHealthBarHearts::PushHearts( int Count )
 {
-    int HalfHeartsAdded = 0;
-
-    // If last heart is half replace it with full one
-    if ( !Images.IsEmpty() && IsValid( Images.Last() ) && IsValid( TextureFullHeart ) && Cast<UTexture2D>( Images.Last()->GetBrush().GetResourceObject() ) == TextureHalfHeart )
+    if ( Count <= 0 )
     {
-        Images.Last()->SetBrushFromTexture( TextureFullHeart, true );
-        HalfHeartsAdded++;
+        return;
     }
 
-    // Add full hearts
-    while ( HalfHeartsToAdd - HalfHeartsAdded > 1 )
+    Hearts.Reserve( Hearts.Num() + Count );
+    for ( int i = 0; i < Count; ++i )
     {
-        const int NumAdded = AddHeartImage( TextureFullHeart );
-        if ( NumAdded == 0 ) // add failed
-        {
-            return HalfHeartsAdded;
-        }
-        HalfHeartsAdded += NumAdded;
+        PushHeart();
     }
-
-    // Add half heart if needed
-    if ( HalfHeartsToAdd - HalfHeartsAdded > 0 )
-    {
-        HalfHeartsAdded += AddHeartImage( TextureHalfHeart );
-    }
-
-    return HalfHeartsAdded;
 }
 
-int UHealthBarHearts::RemoveHeartImages( int HalfHeartsToRemove )
+void UHealthBarHearts::PopHearts( int Count )
 {
-    // Remove full hearts
-    int HalfHeartsRemoved = 0;
-    while ( HalfHeartsToRemove - HalfHeartsRemoved > 1 )
+    if ( Hearts.Num() - Count <= 0 )
     {
-        const int NumberRemoved = RemoveHeartImage();
-        if ( NumberRemoved == 0 ) // remove failed
+        if ( IsValid( HorizontalBox ) )
         {
-            break;
+            HorizontalBox->ClearChildren();
         }
-        HalfHeartsRemoved += NumberRemoved;
+        Hearts.Reset();
     }
 
-    if ( HalfHeartsToRemove - HalfHeartsRemoved > 0 )
+    for ( int i = 0; i < Count; ++i )
     {
-        if ( !Images.IsEmpty() && IsValid( Images.Last() ) && IsValid( TextureHalfHeart ) && Cast<UTexture2D>( Images.Last()->GetBrush().GetResourceObject() ) == TextureFullHeart )
-        {
-            // Replace full heart with half heart
-            Images.Last()->SetBrushFromTexture( TextureHalfHeart, true );
-            HalfHeartsRemoved++;
-        }
-        else
-        {
-            // Remove half heart
-            HalfHeartsRemoved += RemoveHeartImage();
-        }
+        PopHeart();
     }
-
-    return HalfHeartsRemoved;
 }
 
-int UHealthBarHearts::AddHeartImage( UTexture2D* Texture )
+void UHealthBarHearts::PushHeart()
 {
-    if ( !IsValid( Texture ) )
-    {
-        UE_LOG( LogTemp, Error, TEXT( "Health bar texture is invalid" ) );
-        return 0;
-    }
-
     if ( !IsValid( HorizontalBox ) )
     {
         UE_LOG( LogTemp, Error, TEXT( "HorizontalBox is invalid" ) );
-        return 0;
+        return;
     }
 
     if ( !IsValid( WidgetTree ) )
     {
         UE_LOG( LogTemp, Error, TEXT( "WidgetTree is invalid" ) );
-        return 0;
+        return;
     }
 
-    UScaleBox* ScaleBox = WidgetTree->ConstructWidget<UScaleBox>( UScaleBox::StaticClass() );
-    if ( !IsValid( ScaleBox ) )
+    if ( !IsValid( HeartWidgetClass ) )
     {
-        UE_LOG( LogTemp, Error, TEXT( "Failed to create ScaleBox" ) );
-        return 0;
+        return;
     }
 
-    ScaleBox->SetStretch( EStretch::ScaleToFitY );
-
-    UImage* HeartImage = WidgetTree->ConstructWidget<UImage>( UImage::StaticClass() );
-    if ( !IsValid( HeartImage ) )
+    UHeartWidget* Heart = WidgetTree->ConstructWidget<UHeartWidget>( HeartWidgetClass );
+    if ( !IsValid( Heart ) )
     {
-        UE_LOG( LogTemp, Error, TEXT( "Failed to create HeartImage" ) );
-        return 0;
+        UE_LOG( LogTemp, Error, TEXT( "Failed to create Heart" ) );
+        return;
     }
 
-    HeartImage->SetBrushFromTexture( Texture, true );
-
-    UHorizontalBoxSlot* BoxSlot = HorizontalBox->AddChildToHorizontalBox( ScaleBox );
+    UHorizontalBoxSlot* BoxSlot = HorizontalBox->AddChildToHorizontalBox( Heart );
     if ( IsValid( BoxSlot ) )
-        BoxSlot->SetPadding( HeartPadding );
-
-    ScaleBox->AddChild( HeartImage );
-
-    Images.Add( HeartImage );
-
-    int NumAdded = 1;
-    if ( Texture == TextureFullHeart )
     {
-        NumAdded = 2;
+        BoxSlot->SetPadding( HeartPadding );
     }
-    return NumAdded;
+
+    Hearts.Add( Heart );
 }
 
-int UHealthBarHearts::RemoveHeartImage()
+void UHealthBarHearts::PopHeart()
 {
-    if ( Images.IsEmpty() )
+    if ( Hearts.IsEmpty() )
     {
-        return 0;
+        return;
     }
 
-    if ( !IsValid( Images.Last() ) )
+    if ( !IsValid( Hearts.Last() ) )
     {
-        Images.Pop();
-        return 0;
+        Hearts.Pop();
+        return;
     }
 
-    UImage* HeartImage = Images.Last();
-
-    int NumRemoved = 1;
-    if ( Cast<UTexture2D>( HeartImage->GetBrush().GetResourceObject() ) == TextureFullHeart )
+    UHeartWidget* Heart = Hearts.Last();
+    if ( IsValid( Heart ) )
     {
-        NumRemoved = 2;
+        Heart->RemoveFromParent();
+    }
+    Hearts.Pop();
+}
+
+void UHealthBarHearts::UpdateFilledHearts( int NewHalfHearts )
+{
+    if ( Hearts.IsEmpty() || NewHalfHearts < 0 )
+    {
+        return;
+    }
+    
+    NewHalfHearts = FMath::Min( NewHalfHearts, Hearts.Num() * 2 );
+
+    int i = 0;
+    while ( i < NewHalfHearts / 2 )
+    {
+        if ( IsValid( Hearts[i] ) )
+        {
+            Hearts[i]->SetStateFull();
+        }
+        i++;
     }
 
-    // remove parent scale box
-    if ( auto* Parent = HeartImage->GetParent(); IsValid( Parent ) )
+    if ( NewHalfHearts % 2 == 1 )
     {
-        Parent->RemoveFromParent();
+        if ( IsValid( Hearts[i] ) )
+        {
+            Hearts[i]->SetStateHalf();
+        }
+        i++;
     }
-    Images.Pop();
 
-    return NumRemoved;
+    while ( i < Hearts.Num() && !Hearts[i]->IsEmpty() )
+    {
+        if ( IsValid( Hearts[i] ) )
+        {
+            Hearts[i]->SetStateEmpty();
+        }
+        i++;
+    }
 }
