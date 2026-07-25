@@ -60,6 +60,7 @@ public:
 protected:
     // ------------------ Lifecycle ------------------
 
+    virtual void NativePreConstruct() override;
     virtual void NativeConstruct() override;
     virtual void NativeTick( const FGeometry& MyGeometry, float InDeltaTime ) override;
 
@@ -158,8 +159,11 @@ protected:
     // ------------------ Internals ------------------
 
     void RebuildFromWeapon();
+    /** Design-time strip from AbilityListData (no weapon). */
+    void RebuildFromAbilityListData();
     void RebuildStrip();
     void RebuildAbilityEntries();
+    void RebuildAbilityEntriesFromConfig();
     void RefreshVisibleWidgetCount();
     void SyncActiveIndexFromWeapon();
     /** Follow weapon selection changes without interrupting a matching scroll animation. */
