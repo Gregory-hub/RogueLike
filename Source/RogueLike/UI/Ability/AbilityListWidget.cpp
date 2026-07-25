@@ -36,6 +36,21 @@ namespace AbilityListWidgetPrivate
     }
 }
 
+void UAbilityListWidget::NativePreConstruct()
+{
+    Super::NativePreConstruct();
+
+    if ( !IsDesignTime() )
+        return;
+
+    if ( IsValid( ViewportSizeBox ) )
+        ViewportSizeBox->SetClipping( EWidgetClipping::ClipToBounds );
+    if ( IsValid( AbilityCanvas ) )
+        AbilityCanvas->SetClipping( EWidgetClipping::ClipToBounds );
+
+    RebuildFromAbilityListData();
+}
+
 void UAbilityListWidget::NativeConstruct()
 {
     Super::NativeConstruct();
@@ -186,6 +201,16 @@ void UAbilityListWidget::RebuildFromWeapon()
     RebuildStrip();
 }
 
+void UAbilityListWidget::RebuildFromAbilityListData()
+{
+    RebuildAbilityEntriesFromConfig();
+    SyncedWeaponAbilityCount = Abilities.Num();
+    ActiveIndex = Abilities.Num() > 0 ? 0 : INDEX_NONE;
+    ObservedWeaponAbilityIndex = INDEX_NONE;
+    ClearWidgetPool();
+    RebuildStrip();
+}
+
 void UAbilityListWidget::SyncAbilitiesFromWeaponIfNeeded()
 {
     if ( !WeaponComponent.IsValid() )
@@ -217,6 +242,25 @@ void UAbilityListWidget::RebuildAbilityEntries()
 
     for ( int32 Index = 0; Index < Count; ++Index )
         Abilities.Add( ResolveDisplayAbilityData( WeaponComponent->GetAbilityByIndex( Index ) ) );
+}
+
+void UAbilityListWidget::RebuildAbilityEntriesFromConfig()
+{
+    Abilities.Reset();
+
+    if ( !IsValid( AbilityListData ) )
+        return;
+
+    Abilities.Reserve( AbilityListData->Abilities.Num() );
+    for ( const auto& Pair : AbilityListData->Abilities )
+    {
+        if ( Pair.Value.IsNull() )
+            continue;
+
+        UAbilityDataAsset* AbilityData = Pair.Value.LoadSynchronous();
+        if ( IsValid( AbilityData ) )
+            Abilities.Add( AbilityData );
+    }
 }
 
 UAbilityDataAsset* UAbilityListWidget::ResolveDisplayAbilityData( TSubclassOf<UGameplayAbility> AbilityClass ) const
@@ -493,6 +537,8 @@ void UAbilityListWidget::UpdateStripVisuals()
     const float OriginY = GetStripOriginY();
     const bool bSettled = FMath::IsNearlyZero( ScrollOffset ) && PendingScrollSteps == 0;
     const int32 PoolSize = GetDesiredWidgetPoolSize();
+    // Compact = single visible slot (show names). Long list = multiple slots (icons only).
+    const bool bShowNames = VisibleWidgetCount <= 1;
 
     // Pool keeps both edge buffers for bidirectional recycle; only the entering side is shown.
     const int32 ScrollDir = PendingScrollSteps != 0
@@ -527,6 +573,8 @@ void UAbilityListWidget::UpdateStripVisuals()
         Widget->SetVisibility( ( bContentWidget || bEnteringBuffer )
             ? ESlateVisibility::HitTestInvisible
             : ESlateVisibility::Collapsed );
+
+        Widget->SetNameVisible( bShowNames );
     }
 }
 

@@ -40,6 +40,14 @@ void UAbilityWidget::ShowError()
     ApplyIcon( nullptr );
 }
 
+void UAbilityWidget::SetNameVisible( bool bVisible )
+{
+    if ( !IsValid( AbilityName ) )
+        return;
+
+    AbilityName->SetVisibility( bVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed );
+}
+
 void UAbilityWidget::ApplyIcon( TSoftObjectPtr<UTexture2D> InAbilityIcon )
 {
     if ( !IsValid( AbilityIcon ) )
